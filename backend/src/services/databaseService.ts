@@ -7,6 +7,8 @@ import {
   PagoInsert,
   Cancelacion,
   CancelacionInsert,
+  HorarioDisponible,
+  AuditoriaInsert,
   EstadoReservacion,
   MetodoPago,
 } from '../types/database.js';
@@ -21,8 +23,8 @@ export interface CrearReservacionDto {
   usuario_id: string;
   sala_id: number;
   fecha_reservacion: string; // YYYY-MM-DD
-  hora_inicio: string; // HH:00:00
-  hora_fin: string; // HH:00:00
+  hora_inicio: string; // HH:00:00 o HH:00
+  hora_fin: string; // HH:00:00 o HH:00
   monto_total?: number;
   estado_reservacion?: EstadoReservacion;
 }
@@ -33,8 +35,18 @@ export interface RegistrarPagoDto {
   concepto_pago: string;
   metodo_pago: MetodoPago;
   transaccion_id: string;
+  fecha_pago?: string;
 }
 
+/**
+ * Servicio centralizado con tipado estricto para operaciones en Supabase.
+ * Implementa las reglas de negocio de YourSelf Music 2.0:
+ * - 4 salas de ensayo físicas (sala_id: 1..4).
+ * - Cero solapamiento de reservaciones en la misma sala/fecha/horario.
+ * - Bloques de reserva por horas cerradas.
+ * - Aprobación/confirmación automática o manual según método de pago.
+ * - Registro automático en la tabla de auditoría.
+ */
 export class DatabaseService {
   /**
    * 1. Consulta las salas activas en el catálogo (estrictamente salas 1 a 4).
@@ -43,7 +55,7 @@ export class DatabaseService {
     const { data, error } = await supabase
       .from('salas')
       .select('*')
-      .in('estado', ['active', 'disponible', 'Activa'])
+      .in('estado', ['activa', 'active', 'disponible', 'Activa'])
       .order('sala_id', { ascending: true });
 
     if (error) {
@@ -59,7 +71,7 @@ export class DatabaseService {
    */
   static async getSalaPorId(salaId: number): Promise<Sala | null> {
     if (salaId < 1 || salaId > 4) {
-      throw new Error('El identificador de sala debe ser entre 1 y 4.');
+      throw new Error('El identificador de sala debe estar entre 1 y 4.');
     }
 
     const { data, error } = await supabase
@@ -73,7 +85,30 @@ export class DatabaseService {
       throw new Error(`Error al consultar sala ${salaId}: ${error.message}`);
     }
 
-    return (data as Sala) || null;
+    return (data as Sala | null) ?? null;
+  }
+
+  /**
+   * Consulta los horarios operativos configurados para una sala física.
+   */
+  static async getHorariosPorSala(
+    salaId: number,
+    diaSemana?: number
+  ): Promise<HorarioDisponible[]> {
+    let query = supabase.from('horarios_disponibles').select('*').eq('sala_id', salaId);
+
+    if (diaSemana !== undefined) {
+      query = query.eq('dia_semana', diaSemana);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('[DatabaseService.getHorariosPorSala] Error:', error);
+      throw new Error(`Error al consultar horarios de sala: ${error.message}`);
+    }
+
+    return (data as HorarioDisponible[]) || [];
   }
 
   /**
@@ -89,25 +124,63 @@ export class DatabaseService {
     horaFin: string,
     excludeReservacionId?: string
   ): Promise<DisponibilidadResult> {
-    // Validación de sala física
+    // Validación de sala física (1..4)
     if (salaId < 1 || salaId > 4) {
       return {
         disponible: false,
-        mensaje: 'La sala seleccionada debe estar entre 1 y 4.',
+        mensaje: 'La sala seleccionada debe estar estrictamente entre 1 y 4.',
       };
     }
 
-    // Validación de bloques por hora cerrada
-    const [startH, startM] = horaInicio.split(':').map(Number);
-    const [endH, endM] = horaFin.split(':').map(Number);
+    // Normalización de horas a formato HH:MM:SS
+    const normalizarHora = (h: string) => {
+      const parts = h.split(':');
+      const hh = parts[0].padStart(2, '0');
+      const mm = (parts[1] || '00').padStart(2, '0');
+      const ss = (parts[2] || '00').padStart(2, '0');
+      return `${hh}:${mm}:${ss}`;
+    };
+
+    const targetStart = normalizarHora(horaInicio);
+    const targetEnd = normalizarHora(horaFin);
+
+    const [startH, startM] = targetStart.split(':').map(Number);
+    const [endH, endM] = targetEnd.split(':').map(Number);
+
+    // Validación de bloques por horas completas
     if (startM !== 0 || endM !== 0 || endH <= startH) {
       return {
         disponible: false,
-        mensaje: 'Las reservaciones deben ser en bloques de horas completas (ej. 14:00:00 a 16:00:00).',
+        mensaje:
+          'Las reservaciones deben ser en bloques de horas completas (ej. 14:00:00 a 16:00:00) y hora_fin debe ser posterior a hora_inicio.',
       };
     }
 
-    // Consulta de reservaciones activas para esa sala y fecha
+    // Verificar si existe horario operativo en horarios_disponibles
+    try {
+      const fechaObj = new Date(`${fecha}T12:00:00Z`);
+      const diaSemana = fechaObj.getUTCDay(); // 0 = Domingo ... 6 = Sábado
+      const horarios = await this.getHorariosPorSala(salaId, diaSemana);
+
+      if (horarios.length > 0) {
+        const dentroDeHorario = horarios.some((h) => {
+          const apertura = normalizarHora(h.hora_apertura);
+          const cierre = normalizarHora(h.hora_cierre);
+          return targetStart >= apertura && targetEnd <= cierre;
+        });
+
+        if (!dentroDeHorario) {
+          return {
+            disponible: false,
+            mensaje: `El horario solicitado (${targetStart} - ${targetEnd}) está fuera del horario operativo configurado para la sala.`,
+          };
+        }
+      }
+    } catch {
+      // Si la fecha no es parseable o la tabla aún no tiene datos de horarios, continuamos con la validación de solapamiento
+    }
+
+    // Consulta de reservaciones existentes para esa sala y fecha
     let query = supabase
       .from('reservaciones')
       .select('*')
@@ -129,15 +202,11 @@ export class DatabaseService {
     const reservacionesExistentes = (data as Reservacion[]) || [];
 
     // Verificación estricta de solapamiento
-    const normalizarHora = (h: string) => (h.length === 5 ? `${h}:00` : h);
-    const targetStart = normalizarHora(horaInicio);
-    const targetEnd = normalizarHora(horaFin);
-
     const conflicto = reservacionesExistentes.find((res) => {
       const resStart = normalizarHora(res.hora_inicio);
       const resEnd = normalizarHora(res.hora_fin);
 
-      // No se solapan si termina antes o empieza después
+      // No se solapan si resEnd <= targetStart o resStart >= targetEnd
       const noSeSolapa = resEnd <= targetStart || resStart >= targetEnd;
       return !noSeSolapa;
     });
@@ -157,20 +226,27 @@ export class DatabaseService {
   }
 
   /**
-   * 3. Inserta una nueva reservación con validación estricta de solapamiento y cálculo de monto.
+   * 3. Inserta una nueva reservación con validación estricta de solapamiento y cálculo automático de monto.
    */
   static async insertarReservacion(dto: CrearReservacionDto): Promise<Reservacion> {
-    // 1. Verificar sala y obtener tarifa
+    // 1. Verificar sala y estado operativo
     const sala = await this.getSalaPorId(dto.sala_id);
     if (!sala) {
-      throw new Error(`La sala ${dto.sala_id} no existe.`);
+      throw new Error(`La sala ${dto.sala_id} no existe en el catálogo.`);
     }
 
-    if (sala.estado === 'maintenance' || sala.estado === 'mantenimiento') {
-      throw new Error(`La sala ${dto.sala_id} está en mantenimiento y no acepta reservaciones.`);
+    const estadoLower = sala.estado.toLowerCase();
+    if (
+      estadoLower === 'maintenance' ||
+      estadoLower === 'mantenimiento' ||
+      estadoLower === 'inactiva'
+    ) {
+      throw new Error(
+        `La sala ${dto.sala_id} se encuentra en mantenimiento y no acepta reservaciones.`
+      );
     }
 
-    // 2. Verificar disponibilidad de horario
+    // 2. Verificar disponibilidad de horario (Regla de negocio: Prevención estricta de solapamiento)
     const check = await this.verificarDisponibilidad(
       dto.sala_id,
       dto.fecha_reservacion,
@@ -179,7 +255,9 @@ export class DatabaseService {
     );
 
     if (!check.disponible) {
-      throw new Error(check.mensaje || 'La sala no se encuentra disponible en el horario seleccionado.');
+      throw new Error(
+        check.mensaje || 'La sala no se encuentra disponible en el horario seleccionado.'
+      );
     }
 
     // 3. Calcular monto total si no fue provisto
@@ -198,7 +276,7 @@ export class DatabaseService {
       hora_inicio: dto.hora_inicio,
       hora_fin: dto.hora_fin,
       monto_total: montoTotal,
-      estado_reservacion: dto.estado_reservacion || 'pending',
+      estado_reservacion: dto.estado_reservacion || 'pendiente',
     };
 
     const { data, error } = await supabase
@@ -214,10 +292,10 @@ export class DatabaseService {
 
     const nuevaReservacion = data as Reservacion;
 
-    // Registro en tabla de auditoría
+    // Registro automático de auditoría
     await this.registrarAuditoria(
       dto.usuario_id,
-      `CREAR_RESERVACION: Sala ${dto.sala_id} fecha ${dto.fecha_reservacion} (${dto.hora_inicio}-${dto.hora_fin})`,
+      `CREAR_RESERVACION: Sala ${dto.sala_id} para ${dto.fecha_reservacion} (${dto.hora_inicio} - ${dto.hora_fin}), Monto: $${montoTotal}`,
       'reservaciones'
     );
 
@@ -226,8 +304,9 @@ export class DatabaseService {
 
   /**
    * 4. Inserta un nuevo pago y actualiza el estado de la reservación correspondiente.
-   * Regla de Negocio: Si el pago se procesa con éxito (ej. tarjeta), la reservación pasa a 'confirmed'.
-   * Si es transferencia, permanece 'pending' hasta aprobación de administración.
+   * Regla de Negocio:
+   * - Si el pago es con pasarela/tarjeta, la reservación se marca como confirmada automáticamente.
+   * - Si es transferencia, permanece pendiente hasta aprobación del administrador.
    */
   static async insertarPago(dto: RegistrarPagoDto): Promise<Pago> {
     // 1. Verificar existencia de la reservación
@@ -243,13 +322,14 @@ export class DatabaseService {
 
     const reservacion = resData as Reservacion;
 
-    // 2. Insertar pago
+    // 2. Insertar pago en tabla 'pagos'
     const payload: PagoInsert = {
       reservacion_id: dto.reservacion_id,
       monto: dto.monto,
       concepto_pago: dto.concepto_pago,
       metodo_pago: dto.metodo_pago,
       transaccion_id: dto.transaccion_id,
+      ...(dto.fecha_pago ? { fecha_pago: dto.fecha_pago } : {}),
     };
 
     const { data: pagoData, error: pagoError } = await supabase
@@ -265,19 +345,20 @@ export class DatabaseService {
 
     const nuevoPago = pagoData as Pago;
 
-    // 3. Si el método es tarjeta (pasarela inmediata), confirmar la reservación
-    const esTarjeta = dto.metodo_pago === 'card' || dto.metodo_pago === 'tarjeta';
+    // 3. Confirmar la reservación si el pago es inmediato por tarjeta
+    const metodoLower = dto.metodo_pago.toLowerCase();
+    const esTarjeta = metodoLower === 'card' || metodoLower === 'tarjeta';
     if (esTarjeta) {
       await supabase
         .from('reservaciones')
-        .update({ estado_reservacion: 'confirmed' })
+        .update({ estado_reservacion: 'confirmada' })
         .eq('reservacion_id', dto.reservacion_id);
     }
 
-    // Registro de auditoría
+    // Registro en auditoría
     await this.registrarAuditoria(
       reservacion.usuario_id,
-      `REGISTRO_PAGO: Monto $${dto.monto} (${dto.metodo_pago}) Folio ${dto.transaccion_id}`,
+      `REGISTRO_PAGO: Monto $${dto.monto} (${dto.metodo_pago}) Folio ${dto.transaccion_id} para Reservación ${dto.reservacion_id}`,
       'pagos'
     );
 
@@ -285,7 +366,7 @@ export class DatabaseService {
   }
 
   /**
-   * Consulta reservaciones por fecha con detalle del usuario y sala para la vista de calendario.
+   * Consulta reservaciones por fecha para la vista de calendario y control administrativo.
    */
   static async getReservacionesPorFecha(fecha: string): Promise<Reservacion[]> {
     const { data, error } = await supabase
@@ -303,7 +384,25 @@ export class DatabaseService {
   }
 
   /**
-   * Consulta el historial de reservaciones de un usuario.
+   * Consulta una reservación específica por su ID.
+   */
+  static async getReservacionPorId(reservacionId: string): Promise<Reservacion | null> {
+    const { data, error } = await supabase
+      .from('reservaciones')
+      .select('*')
+      .eq('reservacion_id', reservacionId)
+      .maybeSingle();
+
+    if (error) {
+      console.error(`[DatabaseService.getReservacionPorId] Error:`, error);
+      throw new Error(`Error al consultar reservación ${reservacionId}: ${error.message}`);
+    }
+
+    return (data as Reservacion | null) ?? null;
+  }
+
+  /**
+   * Consulta el historial de reservaciones de un usuario específico.
    */
   static async getReservacionesUsuario(usuarioId: string): Promise<Reservacion[]> {
     const { data, error } = await supabase
@@ -323,7 +422,7 @@ export class DatabaseService {
 
   /**
    * Aprueba una transferencia bancaria manual (Acción Administrativa).
-   * Cambia el estado de la reservación a 'confirmed'.
+   * Cambia el estado de la reservación a 'confirmada'.
    */
   static async aprobarPagoTransferencia(
     reservacionId: string,
@@ -331,7 +430,7 @@ export class DatabaseService {
   ): Promise<Reservacion> {
     const { data, error } = await supabase
       .from('reservaciones')
-      .update({ estado_reservacion: 'confirmed' })
+      .update({ estado_reservacion: 'confirmada' })
       .eq('reservacion_id', reservacionId)
       .select()
       .single();
@@ -343,7 +442,7 @@ export class DatabaseService {
 
     await this.registrarAuditoria(
       adminUsuarioId || null,
-      `APROBAR_TRANSFERENCIA: Reservación ${reservacionId} marcada como confirmada`,
+      `APROBAR_TRANSFERENCIA: Reservación ${reservacionId} marcada como confirmada por administración`,
       'reservaciones'
     );
 
@@ -359,11 +458,11 @@ export class DatabaseService {
     esMismoDia: boolean = false,
     montoReembolsado: number = 0,
     usuarioId?: string
-  ): Promise<{ reservacion: Reservacion; cancelacion: Cancelacion }> {
-    // 1. Actualizar estado a 'cancelled'
+  ): Promise<{ reservacion: Reservacion; cancelacion: Cancelacion | null }> {
+    // 1. Actualizar estado a 'cancelada'
     const { data: resData, error: resError } = await supabase
       .from('reservaciones')
-      .update({ estado_reservacion: 'cancelled' })
+      .update({ estado_reservacion: 'cancelada' })
       .eq('reservacion_id', reservacionId)
       .select()
       .single();
@@ -387,18 +486,21 @@ export class DatabaseService {
       .single();
 
     if (cancelError) {
-      console.error('[DatabaseService.cancelarReservacion] Error registrando cancelación:', cancelError);
+      console.error(
+        '[DatabaseService.cancelarReservacion] Error registrando cancelación:',
+        cancelError
+      );
     }
 
     await this.registrarAuditoria(
       usuarioId || null,
-      `CANCELAR_RESERVACION: Reservación ${reservacionId} cancelada (Multa: $${tarifaMulta})`,
+      `CANCELAR_RESERVACION: Reservación ${reservacionId} cancelada (Multa: $${tarifaMulta}, Reembolso: $${montoReembolsado})`,
       'cancelaciones'
     );
 
     return {
       reservacion: resData as Reservacion,
-      cancelacion: cancelData as Cancelacion,
+      cancelacion: (cancelData as Cancelacion | null) ?? null,
     };
   }
 
@@ -411,14 +513,19 @@ export class DatabaseService {
     tablaAfectada: string
   ): Promise<void> {
     try {
-      await supabase.from('auditoria').insert({
+      const payload: AuditoriaInsert = {
         usuario_id: usuarioId,
         accion,
         tabla_afectada: tablaAfectada,
-      });
+      };
+      await supabase.from('auditoria').insert(payload);
     } catch (err: any) {
-      console.warn('[DatabaseService.registrarAuditoria] Advertencia al registrar auditoría:', err.message);
+      console.warn(
+        '[DatabaseService.registrarAuditoria] Advertencia al registrar auditoría:',
+        err?.message || err
+      );
     }
   }
 }
 
+export default DatabaseService;
