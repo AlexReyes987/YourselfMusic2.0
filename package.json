@@ -1,0 +1,31 @@
+{
+  "name": "yourself-music-2.0",
+  "version": "1.0.0",
+  "description": "Sistema de gestión y reservaciones de salas de ensayo para YourSelf Music",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend-web",
+    "admin-app"
+  ],
+  "scripts": {
+    "dev:backend": "npm --workspace=backend run dev",
+    "dev:web": "npm --workspace=frontend-web run dev",
+    "dev:admin": "npm --workspace=admin-app run dev",
+    "build:backend": "npm --workspace=backend run build",
+    "build:web": "npm --workspace=frontend-web run build",
+    "build:admin": "npm --workspace=admin-app run build:app",
+    "build": "npm run build:backend && npm run build:web && npm run build:admin"
+  },
+  "keywords": [
+    "yourself-music",
+    "rehearsal-studio",
+    "booking-system",
+    "express",
+    "react",
+    "electron"
+  ],
+  "author": "YourSelf Music",
+  "license": "ISC"
+}
+
