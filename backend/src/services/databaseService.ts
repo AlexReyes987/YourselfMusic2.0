@@ -5,65 +5,66 @@ import {
   ReservacionInsert,
   Pago,
   PagoInsert,
-  Cancelacion,
-  CancelacionInsert,
   HorarioDisponible,
-  AuditoriaInsert,
   EstadoReservacion,
   MetodoPago,
 } from '../types/database.js';
 
-export interface DisponibilidadResult {
-  disponible: boolean;
-  conflicto?: Reservacion;
-  mensaje?: string;
+export interface RangoLibre {
+  hora_inicio: string;
+  hora_fin: string;
 }
 
-export interface CrearReservacionDto {
+export interface DisponibilidadResponse {
+  sala_id: number;
+  nombre_sala: string;
+  fecha: string;
+  horario_operativo: {
+    hora_apertura: string;
+    hora_cierre: string;
+  };
+  horas_libres: number[]; // e.g. [10, 11, 12, 16, 17...]
+  rangos_libres: RangoLibre[]; // e.g. [{ hora_inicio: '10:00:00', hora_fin: '14:00:00' }]
+  reservaciones_ocupadas: Array<{
+    reservacion_id: string;
+    hora_inicio: string;
+    hora_fin: string;
+    estado: string;
+  }>;
+}
+
+export interface CrearReservacionConPagoDto {
   usuario_id: string;
   sala_id: number;
   fecha_reservacion: string; // YYYY-MM-DD
-  hora_inicio: string; // HH:00:00 o HH:00
-  hora_fin: string; // HH:00:00 o HH:00
+  hora_inicio: string; // HH:00:00
+  hora_fin: string; // HH:00:00
   monto_total?: number;
   estado_reservacion?: EstadoReservacion;
+  pago?: {
+    monto?: number;
+    concepto_pago?: string;
+    metodo_pago: MetodoPago;
+    transaccion_id?: string;
+  };
 }
 
-export interface RegistrarPagoDto {
-  reservacion_id: string;
-  monto: number;
-  concepto_pago: string;
-  metodo_pago: MetodoPago;
-  transaccion_id: string;
-  fecha_pago?: string;
-}
-
-/**
- * Servicio centralizado con tipado estricto para operaciones en Supabase.
- * Implementa las reglas de negocio de YourSelf Music 2.0:
- * - 4 salas de ensayo físicas (sala_id: 1..4).
- * - Cero solapamiento de reservaciones en la misma sala/fecha/horario.
- * - Bloques de reserva por horas cerradas.
- * - Aprobación/confirmación automática o manual según método de pago.
- * - Registro automático en la tabla de auditoría.
- */
 export class DatabaseService {
   /**
-   * 1. Consulta las salas activas en el catálogo (estrictamente salas 1 a 4).
+   * 1. Consulta las salas de ensayo activas desde la tabla 'salas' (1 a 4).
    */
-  static async getSalasActivas(): Promise<Sala[]> {
+  static async getSalas(): Promise<Sala[]> {
     const { data, error } = await supabase
       .from('salas')
       .select('*')
-      .in('estado', ['activa', 'active', 'disponible', 'Activa'])
       .order('sala_id', { ascending: true });
 
     if (error) {
-      console.error('[DatabaseService.getSalasActivas] Error:', error);
-      throw new Error(`Error al consultar salas activas: ${error.message}`);
+      console.error('[DatabaseService.getSalas] Error:', error);
+      throw new Error(`Error al consultar salas: ${error.message}`);
     }
 
-    return (data as Sala[]) || [];
+    return (data || []) as Sala[];
   }
 
   /**
@@ -71,7 +72,7 @@ export class DatabaseService {
    */
   static async getSalaPorId(salaId: number): Promise<Sala | null> {
     if (salaId < 1 || salaId > 4) {
-      throw new Error('El identificador de sala debe estar entre 1 y 4.');
+      throw new Error('El identificador de sala debe ser entre 1 y 4.');
     }
 
     const { data, error } = await supabase
@@ -85,422 +86,265 @@ export class DatabaseService {
       throw new Error(`Error al consultar sala ${salaId}: ${error.message}`);
     }
 
-    return (data as Sala | null) ?? null;
+    return (data as unknown as Sala) || null;
   }
 
   /**
-   * Consulta los horarios operativos configurados para una sala física.
+   * 2. Consulta horarios_disponibles y reservaciones para calcular y retornar
+   * los rangos de horas libres por fecha y sala.
    */
-  static async getHorariosPorSala(
+  static async obtenerDisponibilidad(
     salaId: number,
-    diaSemana?: number
-  ): Promise<HorarioDisponible[]> {
-    let query = supabase.from('horarios_disponibles').select('*').eq('sala_id', salaId);
-
-    if (diaSemana !== undefined) {
-      query = query.eq('dia_semana', diaSemana);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error('[DatabaseService.getHorariosPorSala] Error:', error);
-      throw new Error(`Error al consultar horarios de sala: ${error.message}`);
-    }
-
-    return (data as HorarioDisponible[]) || [];
-  }
-
-  /**
-   * 2. Verifica la disponibilidad de una sala para una fecha y rango de horas.
-   * Regla de Negocio Crítica: Cero solapamiento de reservaciones activas.
-   * Dos intervalos [inicio, fin) y [r.inicio, r.fin) se solapan si:
-   * NOT (r.hora_fin <= hora_inicio OR r.hora_inicio >= hora_fin)
-   */
-  static async verificarDisponibilidad(
-    salaId: number,
-    fecha: string,
-    horaInicio: string,
-    horaFin: string,
-    excludeReservacionId?: string
-  ): Promise<DisponibilidadResult> {
-    // Validación de sala física (1..4)
+    fecha: string
+  ): Promise<DisponibilidadResponse> {
     if (salaId < 1 || salaId > 4) {
-      return {
-        disponible: false,
-        mensaje: 'La sala seleccionada debe estar estrictamente entre 1 y 4.',
-      };
+      throw new Error('La sala debe ser un número del 1 al 4.');
     }
 
-    // Normalización de horas a formato HH:MM:SS
-    const normalizarHora = (h: string) => {
-      const parts = h.split(':');
-      const hh = parts[0].padStart(2, '0');
-      const mm = (parts[1] || '00').padStart(2, '0');
-      const ss = (parts[2] || '00').padStart(2, '0');
-      return `${hh}:${mm}:${ss}`;
-    };
-
-    const targetStart = normalizarHora(horaInicio);
-    const targetEnd = normalizarHora(horaFin);
-
-    const [startH, startM] = targetStart.split(':').map(Number);
-    const [endH, endM] = targetEnd.split(':').map(Number);
-
-    // Validación de bloques por horas completas
-    if (startM !== 0 || endM !== 0 || endH <= startH) {
-      return {
-        disponible: false,
-        mensaje:
-          'Las reservaciones deben ser en bloques de horas completas (ej. 14:00:00 a 16:00:00) y hora_fin debe ser posterior a hora_inicio.',
-      };
+    // 1. Obtener datos de la sala
+    const sala = await this.getSalaPorId(salaId);
+    if (!sala) {
+      throw new Error(`La sala ${salaId} no fue encontrada.`);
     }
 
-    // Verificar si existe horario operativo en horarios_disponibles
-    try {
-      const fechaObj = new Date(`${fecha}T12:00:00Z`);
-      const diaSemana = fechaObj.getUTCDay(); // 0 = Domingo ... 6 = Sábado
-      const horarios = await this.getHorariosPorSala(salaId, diaSemana);
-
-      if (horarios.length > 0) {
-        const dentroDeHorario = horarios.some((h) => {
-          const apertura = normalizarHora(h.hora_apertura);
-          const cierre = normalizarHora(h.hora_cierre);
-          return targetStart >= apertura && targetEnd <= cierre;
-        });
-
-        if (!dentroDeHorario) {
-          return {
-            disponible: false,
-            mensaje: `El horario solicitado (${targetStart} - ${targetEnd}) está fuera del horario operativo configurado para la sala.`,
-          };
-        }
-      }
-    } catch {
-      // Si la fecha no es parseable o la tabla aún no tiene datos de horarios, continuamos con la validación de solapamiento
+    // 2. Determinar día de la semana (0 = Domingo, 1 = Lunes ... 6 = Sábado)
+    const fechaObj = new Date(`${fecha}T12:00:00Z`);
+    if (isNaN(fechaObj.getTime())) {
+      throw new Error('Formato de fecha inválido. Utilice YYYY-MM-DD.');
     }
+    const diaSemana = fechaObj.getDay();
 
-    // Consulta de reservaciones existentes para esa sala y fecha
-    let query = supabase
+    // 3. Consultar horario operativo en horarios_disponibles
+    const { data: horarioData } = await supabase
+      .from('horarios_disponibles')
+      .select('*')
+      .eq('sala_id', salaId)
+      .eq('dia_semana', diaSemana)
+      .maybeSingle();
+
+    const horario = horarioData as unknown as HorarioDisponible | null;
+    const horaAperturaStr = horario?.hora_apertura || '10:00:00';
+    const horaCierreStr = horario?.hora_cierre || '22:00:00';
+
+    const aperturaHour = parseInt(horaAperturaStr.split(':')[0], 10);
+    const cierreHour = parseInt(horaCierreStr.split(':')[0], 10);
+
+    // 4. Consultar reservaciones activas para esa sala y fecha
+    const { data: resData, error: resError } = await supabase
       .from('reservaciones')
       .select('*')
       .eq('sala_id', salaId)
       .eq('fecha_reservacion', fecha)
       .not('estado_reservacion', 'in', '("cancelled","cancelada")');
 
-    if (excludeReservacionId) {
-      query = query.neq('reservacion_id', excludeReservacionId);
+    if (resError) {
+      console.error('[DatabaseService.obtenerDisponibilidad] Error en reservaciones:', resError);
+      throw new Error(`Error al consultar reservaciones: ${resError.message}`);
     }
 
-    const { data, error } = await query;
+    const reservacionesExistentes = (resData || []) as unknown as Reservacion[];
 
-    if (error) {
-      console.error('[DatabaseService.verificarDisponibilidad] Error en consulta:', error);
-      throw new Error(`Error verificando disponibilidad: ${error.message}`);
-    }
+    // 5. Determinar bloques horarios ocupados y libres
+    const normalizarH = (h: string) => parseInt(h.split(':')[0], 10);
 
-    const reservacionesExistentes = (data as Reservacion[]) || [];
-
-    // Verificación estricta de solapamiento
-    const conflicto = reservacionesExistentes.find((res) => {
-      const resStart = normalizarHora(res.hora_inicio);
-      const resEnd = normalizarHora(res.hora_fin);
-
-      // No se solapan si resEnd <= targetStart o resStart >= targetEnd
-      const noSeSolapa = resEnd <= targetStart || resStart >= targetEnd;
-      return !noSeSolapa;
+    const horasOcupadas = new Set<number>();
+    const reservacionesOcupadas = reservacionesExistentes.map((r) => {
+      const startH = normalizarH(r.hora_inicio);
+      const endH = normalizarH(r.hora_fin);
+      for (let h = startH; h < endH; h++) {
+        horasOcupadas.add(h);
+      }
+      return {
+        reservacion_id: r.reservacion_id,
+        hora_inicio: r.hora_inicio,
+        hora_fin: r.hora_fin,
+        estado: r.estado_reservacion,
+      };
     });
 
-    if (conflicto) {
-      return {
-        disponible: false,
-        conflicto,
-        mensaje: `Horario ocupado: Ya existe una reservación activa de ${conflicto.hora_inicio} a ${conflicto.hora_fin}.`,
-      };
+    const horasLibres: number[] = [];
+    for (let h = aperturaHour; h < cierreHour; h++) {
+      if (!horasOcupadas.has(h)) {
+        horasLibres.push(h);
+      }
+    }
+
+    // 6. Construir rangos continuos de horas libres
+    const rangosLibres: RangoLibre[] = [];
+    if (horasLibres.length > 0) {
+      let rangoInicio = horasLibres[0];
+      let rangoFin = horasLibres[0] + 1;
+
+      for (let i = 1; i < horasLibres.length; i++) {
+        const hora = horasLibres[i];
+        if (hora === rangoFin) {
+          rangoFin = hora + 1;
+        } else {
+          rangosLibres.push({
+            hora_inicio: `${String(rangoInicio).padStart(2, '0')}:00:00`,
+            hora_fin: `${String(rangoFin).padStart(2, '0')}:00:00`,
+          });
+          rangoInicio = hora;
+          rangoFin = hora + 1;
+        }
+      }
+
+      rangosLibres.push({
+        hora_inicio: `${String(rangoInicio).padStart(2, '0')}:00:00`,
+        hora_fin: `${String(rangoFin).padStart(2, '0')}:00:00`,
+      });
     }
 
     return {
-      disponible: true,
-      mensaje: 'Horario disponible para reserva.',
+      sala_id: salaId,
+      nombre_sala: sala.nombre_sala,
+      fecha,
+      horario_operativo: {
+        hora_apertura: horaAperturaStr,
+        hora_cierre: horaCierreStr,
+      },
+      horas_libres: horasLibres,
+      rangos_libres: rangosLibres,
+      reservaciones_ocupadas: reservacionesOcupadas,
     };
   }
 
   /**
-   * 3. Inserta una nueva reservación con validación estricta de solapamiento y cálculo automático de monto.
+   * 3. Crea una reservación con validación estricta de solapamiento y registro de pago.
    */
-  static async insertarReservacion(dto: CrearReservacionDto): Promise<Reservacion> {
-    // 1. Verificar sala y estado operativo
+  static async crearReservacionConPago(
+    dto: CrearReservacionConPagoDto
+  ): Promise<{ reservacion: Reservacion; pago?: Pago }> {
+    // 1. Validar sala física 1 a 4
+    if (dto.sala_id < 1 || dto.sala_id > 4) {
+      throw { status: 400, message: 'La sala debe ser entre 1 y 4.' };
+    }
+
     const sala = await this.getSalaPorId(dto.sala_id);
     if (!sala) {
-      throw new Error(`La sala ${dto.sala_id} no existe en el catálogo.`);
+      throw { status: 404, message: `Sala ${dto.sala_id} no encontrada.` };
     }
 
-    const estadoLower = sala.estado.toLowerCase();
-    if (
-      estadoLower === 'maintenance' ||
-      estadoLower === 'mantenimiento' ||
-      estadoLower === 'inactiva'
-    ) {
-      throw new Error(
-        `La sala ${dto.sala_id} se encuentra en mantenimiento y no acepta reservaciones.`
-      );
+    if (sala.estado === 'maintenance' || sala.estado === 'mantenimiento') {
+      throw { status: 400, message: `La sala ${dto.sala_id} se encuentra en mantenimiento.` };
     }
 
-    // 2. Verificar disponibilidad de horario (Regla de negocio: Prevención estricta de solapamiento)
-    const check = await this.verificarDisponibilidad(
-      dto.sala_id,
-      dto.fecha_reservacion,
-      dto.hora_inicio,
-      dto.hora_fin
-    );
+    // 2. Validar bloques de horas cerradas
+    const [startH, startM] = dto.hora_inicio.split(':').map(Number);
+    const [endH, endM] = dto.hora_fin.split(':').map(Number);
 
-    if (!check.disponible) {
-      throw new Error(
-        check.mensaje || 'La sala no se encuentra disponible en el horario seleccionado.'
-      );
+    if (startM !== 0 || endM !== 0 || endH <= startH) {
+      throw {
+        status: 400,
+        message: 'Las reservaciones deben ser en bloques de horas completas (ej. 14:00:00 a 16:00:00).',
+      };
     }
 
-    // 3. Calcular monto total si no fue provisto
-    let montoTotal = dto.monto_total;
-    if (montoTotal === undefined || montoTotal === null) {
-      const startH = parseInt(dto.hora_inicio.split(':')[0], 10);
-      const endH = parseInt(dto.hora_fin.split(':')[0], 10);
-      const horas = endH - startH;
-      montoTotal = horas * Number(sala.precio_por_hora);
+    // 3. Validación estricta anti-solapamiento (Business Rule #1)
+    const { data: resExistentes, error: checkError } = await supabase
+      .from('reservaciones')
+      .select('*')
+      .eq('sala_id', dto.sala_id)
+      .eq('fecha_reservacion', dto.fecha_reservacion)
+      .not('estado_reservacion', 'in', '("cancelled","cancelada")');
+
+    if (checkError) {
+      console.error('[DatabaseService.crearReservacionConPago] Error en check solapamiento:', checkError);
+      throw { status: 500, message: `Error validando disponibilidad: ${checkError.message}` };
     }
 
-    const payload: ReservacionInsert = {
+    const normalizarH = (h: string) => (h.length === 5 ? `${h}:00` : h);
+    const targetStart = normalizarH(dto.hora_inicio);
+    const targetEnd = normalizarH(dto.hora_fin);
+
+    const conflicto = ((resExistentes || []) as unknown as Reservacion[]).find((r) => {
+      const rStart = normalizarH(r.hora_inicio);
+      const rEnd = normalizarH(r.hora_fin);
+      return !(rEnd <= targetStart || rStart >= targetEnd);
+    });
+
+    if (conflicto) {
+      throw {
+        status: 409,
+        message: `Solapamiento detectado: La sala ${dto.sala_id} ya está reservada de ${conflicto.hora_inicio} a ${conflicto.hora_fin} para la fecha ${dto.fecha_reservacion}.`,
+      };
+    }
+
+    // 4. Calcular monto total
+    const horas = endH - startH;
+    const montoCalculado = horas * Number(sala.precio_por_hora);
+    const montoTotal = dto.monto_total ?? montoCalculado;
+
+    // 5. Determinar estado inicial según método de pago (Business Rule #4)
+    const esTarjeta = dto.pago?.metodo_pago === 'card' || dto.pago?.metodo_pago === 'tarjeta';
+    const estadoInicial: EstadoReservacion =
+      dto.estado_reservacion || (esTarjeta ? 'confirmed' : 'pending');
+
+    // 6. Insertar en tabla reservaciones
+    const reservacionPayload: ReservacionInsert = {
       usuario_id: dto.usuario_id,
       sala_id: dto.sala_id,
       fecha_reservacion: dto.fecha_reservacion,
       hora_inicio: dto.hora_inicio,
       hora_fin: dto.hora_fin,
       monto_total: montoTotal,
-      estado_reservacion: dto.estado_reservacion || 'pendiente',
+      estado_reservacion: estadoInicial,
     };
 
-    const { data, error } = await supabase
+    const { data: nuevaResData, error: insertResError } = await supabase
       .from('reservaciones')
-      .insert(payload)
+      .insert(reservacionPayload as any)
       .select()
       .single();
 
-    if (error) {
-      console.error('[DatabaseService.insertarReservacion] Error insertando reservación:', error);
-      throw new Error(`Error al registrar reservación: ${error.message}`);
+    if (insertResError || !nuevaResData) {
+      console.error('[DatabaseService.crearReservacionConPago] Error insertando reservacion:', insertResError);
+      throw { status: 500, message: `Error al crear reservación: ${insertResError?.message}` };
     }
 
-    const nuevaReservacion = data as Reservacion;
+    const reservacionCreada = nuevaResData as unknown as Reservacion;
 
-    // Registro automático de auditoría
+    // 7. Insertar en tabla pagos
+    let pagoCreado: Pago | undefined = undefined;
+
+    if (dto.pago) {
+      const transaccionId =
+        dto.pago.transaccion_id ||
+        `TXN-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+
+      const pagoPayload: PagoInsert = {
+        reservacion_id: reservacionCreada.reservacion_id,
+        monto: dto.pago.monto ?? montoTotal,
+        concepto_pago:
+          dto.pago.concepto_pago ||
+          `Reserva ${sala.nombre_sala} (${dto.fecha_reservacion} ${dto.hora_inicio}-${dto.hora_fin})`,
+        metodo_pago: dto.pago.metodo_pago,
+        transaccion_id: transaccionId,
+      };
+
+      const { data: nuevoPagoData, error: insertPagoError } = await supabase
+        .from('pagos')
+        .insert(pagoPayload as any)
+        .select()
+        .single();
+
+      if (insertPagoError) {
+        console.error('[DatabaseService.crearReservacionConPago] Error insertando pago:', insertPagoError);
+      } else {
+        pagoCreado = nuevoPagoData as unknown as Pago;
+      }
+    }
+
+    // 8. Registrar en auditoría
     await this.registrarAuditoria(
       dto.usuario_id,
-      `CREAR_RESERVACION: Sala ${dto.sala_id} para ${dto.fecha_reservacion} (${dto.hora_inicio} - ${dto.hora_fin}), Monto: $${montoTotal}`,
+      `CREAR_RESERVACION: Sala ${dto.sala_id} fecha ${dto.fecha_reservacion} (${dto.hora_inicio}-${dto.hora_fin}) Estado: ${estadoInicial}`,
       'reservaciones'
-    );
-
-    return nuevaReservacion;
-  }
-
-  /**
-   * 4. Inserta un nuevo pago y actualiza el estado de la reservación correspondiente.
-   * Regla de Negocio:
-   * - Si el pago es con pasarela/tarjeta, la reservación se marca como confirmada automáticamente.
-   * - Si es transferencia, permanece pendiente hasta aprobación del administrador.
-   */
-  static async insertarPago(dto: RegistrarPagoDto): Promise<Pago> {
-    // 1. Verificar existencia de la reservación
-    const { data: resData, error: resError } = await supabase
-      .from('reservaciones')
-      .select('*')
-      .eq('reservacion_id', dto.reservacion_id)
-      .maybeSingle();
-
-    if (resError || !resData) {
-      throw new Error(`Reservación no encontrada para el ID: ${dto.reservacion_id}`);
-    }
-
-    const reservacion = resData as Reservacion;
-
-    // 2. Insertar pago en tabla 'pagos'
-    const payload: PagoInsert = {
-      reservacion_id: dto.reservacion_id,
-      monto: dto.monto,
-      concepto_pago: dto.concepto_pago,
-      metodo_pago: dto.metodo_pago,
-      transaccion_id: dto.transaccion_id,
-      ...(dto.fecha_pago ? { fecha_pago: dto.fecha_pago } : {}),
-    };
-
-    const { data: pagoData, error: pagoError } = await supabase
-      .from('pagos')
-      .insert(payload)
-      .select()
-      .single();
-
-    if (pagoError) {
-      console.error('[DatabaseService.insertarPago] Error insertando pago:', pagoError);
-      throw new Error(`Error al registrar pago: ${pagoError.message}`);
-    }
-
-    const nuevoPago = pagoData as Pago;
-
-    // 3. Confirmar la reservación si el pago es inmediato por tarjeta
-    const metodoLower = dto.metodo_pago.toLowerCase();
-    const esTarjeta = metodoLower === 'card' || metodoLower === 'tarjeta';
-    if (esTarjeta) {
-      await supabase
-        .from('reservaciones')
-        .update({ estado_reservacion: 'confirmada' })
-        .eq('reservacion_id', dto.reservacion_id);
-    }
-
-    // Registro en auditoría
-    await this.registrarAuditoria(
-      reservacion.usuario_id,
-      `REGISTRO_PAGO: Monto $${dto.monto} (${dto.metodo_pago}) Folio ${dto.transaccion_id} para Reservación ${dto.reservacion_id}`,
-      'pagos'
-    );
-
-    return nuevoPago;
-  }
-
-  /**
-   * Consulta reservaciones por fecha para la vista de calendario y control administrativo.
-   */
-  static async getReservacionesPorFecha(fecha: string): Promise<Reservacion[]> {
-    const { data, error } = await supabase
-      .from('reservaciones')
-      .select('*')
-      .eq('fecha_reservacion', fecha)
-      .order('hora_inicio', { ascending: true });
-
-    if (error) {
-      console.error('[DatabaseService.getReservacionesPorFecha] Error:', error);
-      throw new Error(`Error consultando reservaciones: ${error.message}`);
-    }
-
-    return (data as Reservacion[]) || [];
-  }
-
-  /**
-   * Consulta una reservación específica por su ID.
-   */
-  static async getReservacionPorId(reservacionId: string): Promise<Reservacion | null> {
-    const { data, error } = await supabase
-      .from('reservaciones')
-      .select('*')
-      .eq('reservacion_id', reservacionId)
-      .maybeSingle();
-
-    if (error) {
-      console.error(`[DatabaseService.getReservacionPorId] Error:`, error);
-      throw new Error(`Error al consultar reservación ${reservacionId}: ${error.message}`);
-    }
-
-    return (data as Reservacion | null) ?? null;
-  }
-
-  /**
-   * Consulta el historial de reservaciones de un usuario específico.
-   */
-  static async getReservacionesUsuario(usuarioId: string): Promise<Reservacion[]> {
-    const { data, error } = await supabase
-      .from('reservaciones')
-      .select('*')
-      .eq('usuario_id', usuarioId)
-      .order('fecha_reservacion', { ascending: false })
-      .order('hora_inicio', { ascending: false });
-
-    if (error) {
-      console.error('[DatabaseService.getReservacionesUsuario] Error:', error);
-      throw new Error(`Error consultando historial de usuario: ${error.message}`);
-    }
-
-    return (data as Reservacion[]) || [];
-  }
-
-  /**
-   * Aprueba una transferencia bancaria manual (Acción Administrativa).
-   * Cambia el estado de la reservación a 'confirmada'.
-   */
-  static async aprobarPagoTransferencia(
-    reservacionId: string,
-    adminUsuarioId?: string
-  ): Promise<Reservacion> {
-    const { data, error } = await supabase
-      .from('reservaciones')
-      .update({ estado_reservacion: 'confirmada' })
-      .eq('reservacion_id', reservacionId)
-      .select()
-      .single();
-
-    if (error) {
-      console.error('[DatabaseService.aprobarPagoTransferencia] Error:', error);
-      throw new Error(`Error al aprobar transferencia: ${error.message}`);
-    }
-
-    await this.registrarAuditoria(
-      adminUsuarioId || null,
-      `APROBAR_TRANSFERENCIA: Reservación ${reservacionId} marcada como confirmada por administración`,
-      'reservaciones'
-    );
-
-    return data as Reservacion;
-  }
-
-  /**
-   * Cancela una reservación y registra la multa/reembolso en la tabla 'cancelaciones'.
-   */
-  static async cancelarReservacion(
-    reservacionId: string,
-    tarifaMulta: number = 0,
-    esMismoDia: boolean = false,
-    montoReembolsado: number = 0,
-    usuarioId?: string
-  ): Promise<{ reservacion: Reservacion; cancelacion: Cancelacion | null }> {
-    // 1. Actualizar estado a 'cancelada'
-    const { data: resData, error: resError } = await supabase
-      .from('reservaciones')
-      .update({ estado_reservacion: 'cancelada' })
-      .eq('reservacion_id', reservacionId)
-      .select()
-      .single();
-
-    if (resError || !resData) {
-      throw new Error(`Error al cancelar reservación: ${resError?.message || 'No encontrada'}`);
-    }
-
-    // 2. Registrar en tabla de cancelaciones
-    const cancelPayload: CancelacionInsert = {
-      reservacion_id: reservacionId,
-      tarifa_multa: tarifaMulta,
-      es_mismo_dia: esMismoDia,
-      monto_reembolsado: montoReembolsado,
-    };
-
-    const { data: cancelData, error: cancelError } = await supabase
-      .from('cancelaciones')
-      .insert(cancelPayload)
-      .select()
-      .single();
-
-    if (cancelError) {
-      console.error(
-        '[DatabaseService.cancelarReservacion] Error registrando cancelación:',
-        cancelError
-      );
-    }
-
-    await this.registrarAuditoria(
-      usuarioId || null,
-      `CANCELAR_RESERVACION: Reservación ${reservacionId} cancelada (Multa: $${tarifaMulta}, Reembolso: $${montoReembolsado})`,
-      'cancelaciones'
     );
 
     return {
-      reservacion: resData as Reservacion,
-      cancelacion: (cancelData as Cancelacion | null) ?? null,
+      reservacion: reservacionCreada,
+      pago: pagoCreado,
     };
   }
 
@@ -513,19 +357,13 @@ export class DatabaseService {
     tablaAfectada: string
   ): Promise<void> {
     try {
-      const payload: AuditoriaInsert = {
+      await supabase.from('auditoria').insert({
         usuario_id: usuarioId,
         accion,
         tabla_afectada: tablaAfectada,
-      };
-      await supabase.from('auditoria').insert(payload);
+      } as any);
     } catch (err: any) {
-      console.warn(
-        '[DatabaseService.registrarAuditoria] Advertencia al registrar auditoría:',
-        err?.message || err
-      );
+      console.warn('[DatabaseService.registrarAuditoria] Error registrando auditoría:', err.message);
     }
   }
 }
-
-export default DatabaseService;

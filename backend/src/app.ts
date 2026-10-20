@@ -19,9 +19,9 @@ app.use(morgan(ENV.NODE_ENV === 'development' ? 'dev' : 'combined'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Rutas principales bajo /api/v1
+// Rutas de la API (soportando tanto /api como /api/v1)
+app.use('/api', apiRouter);
 app.use('/api/v1', apiRouter);
 
 // Manejador global de errores
 app.use(errorHandler);
-

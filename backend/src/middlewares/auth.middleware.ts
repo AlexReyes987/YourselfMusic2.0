@@ -34,6 +34,24 @@ export const authenticate: RequestHandler = (req: Request, res: Response, next: 
   }
 };
 
+export const optionalAuthenticate: RequestHandler = (req: Request, res: Response, next: NextFunction) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return next();
+  }
+
+  const token = authHeader.split(' ')[1];
+
+  try {
+    const decoded = jwt.verify(token, ENV.JWT.SECRET) as { id: string; email: string; role: UserRole };
+    req.user = decoded;
+  } catch {
+    // Si el token es inválido en optionalAuthenticate, continuamos como anónimo
+  }
+  next();
+};
+
 export const authorizeRole = (role: UserRole): RequestHandler => {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.user || req.user.role !== role) {

@@ -1,6 +1,19 @@
 import * as dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Prioriza .env.local sobre .env tanto desde la raíz del workspace como en la carpeta local
+dotenv.config({
+  path: [
+    path.resolve(process.cwd(), '.env.local'),
+    path.resolve(process.cwd(), '.env'),
+    path.resolve(__dirname, '../../.env.local'),
+    path.resolve(__dirname, '../../.env'),
+  ],
+});
 
 export const ENV = {
   PORT: process.env.PORT ? parseInt(process.env.PORT, 10) : 4000,

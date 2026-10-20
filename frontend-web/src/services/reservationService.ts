@@ -1,27 +1,38 @@
 import { api } from './api';
-import { Reservation } from '../types';
-
-export interface CreateReservationDto {
-  room_id: number;
-  date: string;
-  start_time: string;
-  end_time: string;
-}
+import { Reservacion, DisponibilidadResponse, CreateReservationDto } from '../types';
 
 export const reservationService = {
-  async create(data: CreateReservationDto): Promise<Reservation> {
-    const response = await api.post('/reservations', data);
+  /**
+   * Consulta la disponibilidad en tiempo real de una sala para una fecha específica.
+   * Retorna horas libres, rangos libres y citas ocupadas.
+   */
+  async getDisponibilidad(salaId: number, fecha: string): Promise<DisponibilidadResponse> {
+    const response = await api.get(`/reservaciones/disponibilidad?sala_id=${salaId}&fecha=${fecha}`);
     return response.data.data;
   },
 
-  async getMyReservations(): Promise<Reservation[]> {
-    const response = await api.get('/reservations/my-reservations');
+  /**
+   * Crea una nueva reservación y registra el pago (tarjeta/transferencia)
+   * con validación anti-solapamiento en servidor.
+   */
+  async create(data: CreateReservationDto): Promise<{ reservacion: Reservacion; pago?: any }> {
+    const response = await api.post('/reservaciones', data);
     return response.data.data;
   },
 
-  async getByDate(date: string): Promise<Reservation[]> {
-    const response = await api.get(`/reservations/by-date?date=${date}`);
+  /**
+   * Obtiene las reservaciones del usuario autenticado
+   */
+  async getMyReservations(): Promise<Reservacion[]> {
+    const response = await api.get('/reservaciones/my-reservations');
+    return response.data.data;
+  },
+
+  /**
+   * Obtiene reservaciones por fecha
+   */
+  async getByDate(date: string): Promise<Reservacion[]> {
+    const response = await api.get(`/reservaciones/by-date?date=${date}`);
     return response.data.data;
   },
 };
-
