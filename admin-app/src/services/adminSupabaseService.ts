@@ -11,7 +11,7 @@ export interface FiltrosReservacion {
 }
 
 export interface CrearReservacionManualDto {
-  usuario_id?: string;
+  usuario_id?: string | number;
   nombre_cliente: string;
   email_cliente?: string;
   telefono_cliente: string;
@@ -19,22 +19,23 @@ export interface CrearReservacionManualDto {
   fecha_reservacion: string; // YYYY-MM-DD
   hora_inicio: string; // HH:00:00
   hora_fin: string; // HH:00:00
+  num_personas?: number;
   monto_total?: number;
   estado_reservacion?: string;
   registrar_pago?: boolean;
   metodo_pago?: 'card' | 'transfer' | string;
 }
 
-// Datos de demostración enriquecidos para cuando Supabase no tenga conexión activa
+// Datos de demostración enriquecidos con las 4 salas oficiales ($35/h por persona, cap: 9)
 const MOCK_RESERVACIONES: ReservacionCompleta[] = [
   {
-    reservacion_id: 'res-001',
-    usuario_id: 'usr-101',
+    reservacion_id: '1',
+    usuario_id: 2,
     sala_id: 1,
     fecha_reservacion: new Date().toISOString().split('T')[0],
     hora_inicio: '14:00:00',
     hora_fin: '16:00:00',
-    monto_total: 500,
+    monto_total: 280, // 4 miembros * 35 * 2h = 280
     estado_reservacion: 'confirmed',
     usuarios: {
       nombre: 'Banda Los Alacranes',
@@ -42,14 +43,14 @@ const MOCK_RESERVACIONES: ReservacionCompleta[] = [
       telefono: '618 123 4567',
     },
     salas: {
-      nombre_sala: 'Sala 1 - Master Stage',
-      precio_por_hora: 250,
-      capacidad: 8,
+      nombre_sala: 'Sala 1 - Azul / Neon',
+      precio_por_hora: 35,
+      capacidad: 9,
     },
     pagos: [
       {
-        pago_id: 'pay-001',
-        monto: 500,
+        pago_id: '1',
+        monto: 280,
         metodo_pago: 'card',
         transaccion_id: 'CARD-STRIPE-8912',
         fecha_pago: new Date().toISOString(),
@@ -57,13 +58,13 @@ const MOCK_RESERVACIONES: ReservacionCompleta[] = [
     ],
   },
   {
-    reservacion_id: 'res-002',
-    usuario_id: 'usr-102',
+    reservacion_id: '2',
+    usuario_id: 2,
     sala_id: 2,
     fecha_reservacion: new Date().toISOString().split('T')[0],
     hora_inicio: '16:00:00',
     hora_fin: '18:00:00',
-    monto_total: 400,
+    monto_total: 210, // 3 miembros * 35 * 2h = 210
     estado_reservacion: 'confirmed',
     usuarios: {
       nombre: 'Ensamble de Jazz Durango',
@@ -71,14 +72,14 @@ const MOCK_RESERVACIONES: ReservacionCompleta[] = [
       telefono: '618 987 6543',
     },
     salas: {
-      nombre_sala: 'Sala 2 - Rocker Studio',
-      precio_por_hora: 200,
-      capacidad: 6,
+      nombre_sala: 'Sala 2 - Roja',
+      precio_por_hora: 35,
+      capacidad: 9,
     },
     pagos: [
       {
-        pago_id: 'pay-002',
-        monto: 400,
+        pago_id: '2',
+        monto: 210,
         metodo_pago: 'transfer',
         transaccion_id: 'SPEI-892104',
         fecha_pago: new Date().toISOString(),
@@ -86,28 +87,28 @@ const MOCK_RESERVACIONES: ReservacionCompleta[] = [
     ],
   },
   {
-    reservacion_id: 'res-003',
-    usuario_id: 'usr-103',
+    reservacion_id: '3',
+    usuario_id: 2,
     sala_id: 3,
     fecha_reservacion: new Date().toISOString().split('T')[0],
     hora_inicio: '18:00:00',
     hora_fin: '20:00:00',
-    monto_total: 440,
+    monto_total: 140, // 2 miembros * 35 * 2h = 140
     estado_reservacion: 'pending',
     usuarios: {
-      nombre: 'Trío Piano & Canto',
-      email: 'triopiano@outlook.com',
+      nombre: 'Dúo Acústico Durango',
+      email: 'duoacustico@outlook.com',
       telefono: '618 555 1234',
     },
     salas: {
-      nombre_sala: 'Sala 3 - Acoustic & Jazz',
-      precio_por_hora: 220,
-      capacidad: 5,
+      nombre_sala: 'Sala 3 - Naranja',
+      precio_por_hora: 35,
+      capacidad: 9,
     },
     pagos: [
       {
-        pago_id: 'pay-003',
-        monto: 440,
+        pago_id: '3',
+        monto: 140,
         metodo_pago: 'transfer',
         transaccion_id: 'SPEI-771239',
         fecha_pago: new Date().toISOString(),
@@ -115,13 +116,13 @@ const MOCK_RESERVACIONES: ReservacionCompleta[] = [
     ],
   },
   {
-    reservacion_id: 'res-004',
-    usuario_id: 'usr-104',
+    reservacion_id: '4',
+    usuario_id: 2,
     sala_id: 4,
     fecha_reservacion: new Date().toISOString().split('T')[0],
-    hora_inicio: '11:00:00',
-    hora_fin: '13:00:00',
-    monto_total: 360,
+    hora_inicio: '12:00:00',
+    hora_fin: '14:00:00',
+    monto_total: 350,
     estado_reservacion: 'cancelled',
     usuarios: {
       nombre: 'Indie Band X',
@@ -129,9 +130,9 @@ const MOCK_RESERVACIONES: ReservacionCompleta[] = [
       telefono: '618 444 8899',
     },
     salas: {
-      nombre_sala: 'Sala 4 - Indie Rehearsal',
-      precio_por_hora: 180,
-      capacidad: 4,
+      nombre_sala: 'Sala 4 - Blanca',
+      precio_por_hora: 35,
+      capacidad: 9,
     },
     pagos: [],
   },
@@ -139,7 +140,7 @@ const MOCK_RESERVACIONES: ReservacionCompleta[] = [
 
 export const adminSupabaseService = {
   /**
-   * 1. Consulta las 4 salas físicas
+   * 1. Consulta las 4 salas físicas oficiales
    */
   async getSalas(): Promise<Sala[]> {
     try {
@@ -150,19 +151,19 @@ export const adminSupabaseService = {
 
       if (error || !data || data.length === 0) {
         return [
-          { sala_id: 1, nombre_sala: 'Sala 1 - Master Stage', descripcion: 'Batería Pearl Masters, Marshall JCM800', precio_por_hora: 250, capacidad: 8, estado: 'active' },
-          { sala_id: 2, nombre_sala: 'Sala 2 - Rocker Studio', descripcion: 'Batería Tama Superstar, Vox AC30', precio_por_hora: 200, capacidad: 6, estado: 'active' },
-          { sala_id: 3, nombre_sala: 'Sala 3 - Acoustic & Jazz', descripcion: 'Piano acústico Yamaha, Gretsch Catalina', precio_por_hora: 220, capacidad: 5, estado: 'active' },
-          { sala_id: 4, nombre_sala: 'Sala 4 - Indie Rehearsal', descripcion: 'Batería Mapex, Orange & Fender Rumble', precio_por_hora: 180, capacidad: 4, estado: 'active' },
+          { sala_id: 1, nombre_sala: 'Sala 1 - Azul / Neon', descripcion: 'Sala temática azul/neón con batería profesional y microfonía de alta fidelidad', precio_por_hora: 35, capacidad: 9, estado: 'active' },
+          { sala_id: 2, nombre_sala: 'Sala 2 - Roja', descripcion: 'Sala temática roja con acústica especializada y amplificación valvular', precio_por_hora: 35, capacidad: 9, estado: 'active' },
+          { sala_id: 3, nombre_sala: 'Sala 3 - Naranja', descripcion: 'Sala temática naranja equipada con backline completo y monitoreo estéreo', precio_por_hora: 35, capacidad: 9, estado: 'active' },
+          { sala_id: 4, nombre_sala: 'Sala 4 - Blanca', descripcion: 'Sala blanca minimalista con iluminación neutra y monitores de referencia', precio_por_hora: 35, capacidad: 9, estado: 'active' },
         ];
       }
       return data as Sala[];
     } catch {
       return [
-        { sala_id: 1, nombre_sala: 'Sala 1 - Master Stage', descripcion: 'Batería Pearl Masters, Marshall JCM800', precio_por_hora: 250, capacidad: 8, estado: 'active' },
-        { sala_id: 2, nombre_sala: 'Sala 2 - Rocker Studio', descripcion: 'Batería Tama Superstar, Vox AC30', precio_por_hora: 200, capacidad: 6, estado: 'active' },
-        { sala_id: 3, nombre_sala: 'Sala 3 - Acoustic & Jazz', descripcion: 'Piano acústico Yamaha, Gretsch Catalina', precio_por_hora: 220, capacidad: 5, estado: 'active' },
-        { sala_id: 4, nombre_sala: 'Sala 4 - Indie Rehearsal', descripcion: 'Batería Mapex, Orange & Fender Rumble', precio_por_hora: 180, capacidad: 4, estado: 'active' },
+        { sala_id: 1, nombre_sala: 'Sala 1 - Azul / Neon', descripcion: 'Sala temática azul/neón con batería profesional y microfonía de alta fidelidad', precio_por_hora: 35, capacidad: 9, estado: 'active' },
+        { sala_id: 2, nombre_sala: 'Sala 2 - Roja', descripcion: 'Sala temática roja con acústica especializada y amplificación valvular', precio_por_hora: 35, capacidad: 9, estado: 'active' },
+        { sala_id: 3, nombre_sala: 'Sala 3 - Naranja', descripcion: 'Sala temática naranja equipada con backline completo y monitoreo estéreo', precio_por_hora: 35, capacidad: 9, estado: 'active' },
+        { sala_id: 4, nombre_sala: 'Sala 4 - Blanca', descripcion: 'Sala blanca minimalista con iluminación neutra y monitores de referencia', precio_por_hora: 35, capacidad: 9, estado: 'active' },
       ];
     }
   },
@@ -250,14 +251,17 @@ export const adminSupabaseService = {
       );
     }
 
-    // 2. Crear usuario si no existe o usar usuario_id
-    let usuarioId = dto.usuario_id;
-    if (!usuarioId) {
-      usuarioId = '00000000-0000-0000-0000-000000000001';
+    // 2. Normalizar usuario_id como entero (por defecto cliente general 2)
+    let usuarioId: number = 2;
+    if (typeof dto.usuario_id === 'number' && !isNaN(dto.usuario_id)) {
+      usuarioId = dto.usuario_id;
+    } else if (typeof dto.usuario_id === 'string') {
+      const parsed = parseInt(dto.usuario_id, 10);
+      if (!isNaN(parsed)) usuarioId = parsed;
     }
 
     // 3. Insertar reservación
-    const monto = dto.monto_total || 400;
+    const monto = dto.monto_total || 140; // 4 miembros * 35 * 1h
     const estado = dto.estado_reservacion || (dto.registrar_pago ? 'confirmed' : 'pending');
 
     const { data: newRes, error: resError } = await supabase
@@ -277,7 +281,7 @@ export const adminSupabaseService = {
     if (resError) {
       console.warn('Error en insert Supabase, creando en memoria local:', resError);
       const mockRes: ReservacionCompleta = {
-        reservacion_id: `res-${Date.now()}`,
+        reservacion_id: `${Date.now()}`,
         usuario_id: usuarioId,
         sala_id: dto.sala_id,
         fecha_reservacion: dto.fecha_reservacion,
@@ -292,7 +296,7 @@ export const adminSupabaseService = {
         },
         salas: {
           nombre_sala: `Sala ${dto.sala_id}`,
-          precio_por_hora: 200,
+          precio_por_hora: 35,
         },
       };
       MOCK_RESERVACIONES.unshift(mockRes);
@@ -317,7 +321,7 @@ export const adminSupabaseService = {
    * 4. Modifica el horario o sala de una reservación existente (con validación de solapamiento)
    */
   async modificarHorario(
-    reservacion_id: string,
+    reservacion_id: string | number,
     sala_id: number,
     fecha_reservacion: string,
     hora_inicio: string,
@@ -360,7 +364,7 @@ export const adminSupabaseService = {
 
     if (error) {
       console.warn('Fallback actualizando mock local:', error);
-      const index = MOCK_RESERVACIONES.findIndex((r) => r.reservacion_id === reservacion_id);
+      const index = MOCK_RESERVACIONES.findIndex((r) => String(r.reservacion_id) === String(reservacion_id));
       if (index !== -1) {
         MOCK_RESERVACIONES[index].sala_id = sala_id;
         MOCK_RESERVACIONES[index].fecha_reservacion = fecha_reservacion;
@@ -374,7 +378,7 @@ export const adminSupabaseService = {
    * 5. Cancela o elimina una reservación registrando la justificación en la tabla 'cancelaciones'
    */
   async cancelarReservacion(
-    reservacion_id: string,
+    reservacion_id: string | number,
     motivo: string,
     tarifaMulta: number = 0,
     montoReembolsado: number = 0,
@@ -388,7 +392,7 @@ export const adminSupabaseService = {
 
     if (updateError) {
       console.warn('Fallback cancelando mock local:', updateError);
-      const index = MOCK_RESERVACIONES.findIndex((r) => r.reservacion_id === reservacion_id);
+      const index = MOCK_RESERVACIONES.findIndex((r) => String(r.reservacion_id) === String(reservacion_id));
       if (index !== -1) {
         MOCK_RESERVACIONES[index].estado_reservacion = 'cancelled';
       }
@@ -397,7 +401,7 @@ export const adminSupabaseService = {
     // 2. Registrar en la tabla cancelaciones de Supabase
     try {
       await supabase.from('cancelaciones').insert({
-        reservacion_id,
+        reservacion_id: Number(reservacion_id) || reservacion_id,
         tarifa_multa: tarifaMulta,
         es_mismo_dia: esMismoDia,
         monto_reembolsado: montoReembolsado,
@@ -405,7 +409,7 @@ export const adminSupabaseService = {
 
       // Registrar auditoría con el motivo
       await supabase.from('auditoria').insert({
-        usuario_id: null,
+        usuario_id: 1, // Admin
         accion: `CANCELACION_ADMIN: Reservacion ${reservacion_id}. Motivo: ${motivo}`,
         tabla_afectada: 'cancelaciones',
       } as any);
@@ -417,7 +421,7 @@ export const adminSupabaseService = {
   /**
    * 6. Módulo para cambiar el estado de pago de las reservaciones (Confirmar transferencias)
    */
-  async confirmarTransferencia(reservacion_id: string): Promise<void> {
+  async confirmarTransferencia(reservacion_id: string | number): Promise<void> {
     const { error } = await supabase
       .from('reservaciones')
       .update({ estado_reservacion: 'confirmed' } as any)
@@ -425,7 +429,7 @@ export const adminSupabaseService = {
 
     if (error) {
       console.warn('Fallback confirmando transferencia en mock local:', error);
-      const index = MOCK_RESERVACIONES.findIndex((r) => r.reservacion_id === reservacion_id);
+      const index = MOCK_RESERVACIONES.findIndex((r) => String(r.reservacion_id) === String(reservacion_id));
       if (index !== -1) {
         MOCK_RESERVACIONES[index].estado_reservacion = 'confirmed';
       }
@@ -433,7 +437,7 @@ export const adminSupabaseService = {
 
     try {
       await supabase.from('auditoria').insert({
-        usuario_id: null,
+        usuario_id: 1, // Admin
         accion: `CONFIRMAR_TRANSFERENCIA: Reservacion ${reservacion_id} marcada como confirmada`,
         tabla_afectada: 'reservaciones',
       } as any);
@@ -445,7 +449,7 @@ export const adminSupabaseService = {
   /**
    * Rechazar comprobante de transferencia y cancelar cita
    */
-  async rechazarTransferencia(reservacion_id: string, motivo: string = 'Comprobante bancario no válido'): Promise<void> {
+  async rechazarTransferencia(reservacion_id: string | number, motivo: string = 'Comprobante bancario no válido'): Promise<void> {
     await this.cancelarReservacion(reservacion_id, motivo, 0, 0, false);
   },
 };

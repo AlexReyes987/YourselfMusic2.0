@@ -9,13 +9,14 @@ interface ScheduleGridProps {
 }
 
 const ROOMS = [
-  { id: 1, name: 'Sala 1 (Master Stage)' },
-  { id: 2, name: 'Sala 2 (Rocker Studio)' },
-  { id: 3, name: 'Sala 3 (Acoustic & Jazz)' },
-  { id: 4, name: 'Sala 4 (Indie Rehearsal)' },
+  { id: 1, name: 'Sala 1 (Azul / Neon)' },
+  { id: 2, name: 'Sala 2 (Roja)' },
+  { id: 3, name: 'Sala 3 (Naranja)' },
+  { id: 4, name: 'Sala 4 (Blanca)' },
 ];
 
-const HOURS = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22];
+// Horario operativo oficial: 12:00 PM a 23:00 PM
+const HOURS = [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22];
 
 export const ScheduleGrid: React.FC<ScheduleGridProps> = ({
   date,

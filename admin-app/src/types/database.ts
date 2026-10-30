@@ -13,7 +13,7 @@ export interface Sala {
 }
 
 export interface Usuario {
-  usuario_id: string;
+  usuario_id: string | number;
   role_id: number;
   nombre: string;
   email: string;
@@ -31,8 +31,8 @@ export type EstadoReservacion =
   | string;
 
 export interface Reservacion {
-  reservacion_id: string;
-  usuario_id: string;
+  reservacion_id: string | number;
+  usuario_id: string | number;
   sala_id: number;
   fecha_reservacion: string;
   hora_inicio: string;
@@ -43,7 +43,7 @@ export interface Reservacion {
 
 export interface ReservacionCompleta extends Reservacion {
   usuarios?: {
-    usuario_id?: string;
+    usuario_id?: string | number;
     nombre: string;
     email: string;
     telefono: string;
@@ -55,7 +55,7 @@ export interface ReservacionCompleta extends Reservacion {
     capacidad?: number;
   } | null;
   pagos?: Array<{
-    pago_id: string;
+    pago_id: string | number;
     monto: number;
     metodo_pago: string;
     transaccion_id: string;
@@ -65,8 +65,8 @@ export interface ReservacionCompleta extends Reservacion {
 }
 
 export interface Pago {
-  pago_id: string;
-  reservacion_id: string;
+  pago_id: string | number;
+  reservacion_id: string | number;
   monto: number;
   concepto_pago: string;
   metodo_pago: 'card' | 'transfer' | 'tarjeta' | 'transferencia' | string;
@@ -76,11 +76,10 @@ export interface Pago {
 }
 
 export interface Cancelacion {
-  cancelacion_id: string;
-  reservacion_id: string;
+  cancelacion_id: string | number;
+  reservacion_id: string | number;
   fecha_cancelacion?: string;
   tarifa_multa: number;
   es_mismo_dia: boolean;
   monto_reembolsado: number;
 }
-

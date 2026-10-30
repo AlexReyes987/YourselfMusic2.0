@@ -7,6 +7,8 @@ import { BookingPage } from './pages/BookingPage';
 import { PaymentPage } from './pages/PaymentPage';
 import { ConfirmationPage } from './pages/ConfirmationPage';
 import { MyReservationsPage } from './pages/MyReservationsPage';
+import { LoginPage } from './pages/LoginPage';
+import { RegisterPage } from './pages/RegisterPage';
 import { AuthProvider } from './context/AuthContext';
 
 export const App: React.FC = () => {
@@ -21,6 +23,8 @@ export const App: React.FC = () => {
             <Route path="/payment" element={<PaymentPage />} />
             <Route path="/confirmation" element={<ConfirmationPage />} />
             <Route path="/my-reservations" element={<MyReservationsPage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
           </Routes>
         </main>
         <Footer />

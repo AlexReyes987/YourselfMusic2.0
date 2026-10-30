@@ -83,7 +83,7 @@ export const ReservationsPage: React.FC = () => {
     const cliente = r.usuarios?.nombre?.toLowerCase() || '';
     const email = r.usuarios?.email?.toLowerCase() || '';
     const telefono = r.usuarios?.telefono?.toLowerCase() || '';
-    const folio = r.reservacion_id.toLowerCase();
+    const folio = String(r.reservacion_id).toLowerCase();
     return (
       cliente.includes(term) ||
       email.includes(term) ||
@@ -206,10 +206,10 @@ export const ReservationsPage: React.FC = () => {
             className="w-full px-3 py-2 rounded-xl bg-[#1f2430] border border-[#2a3142] text-xs text-white focus:outline-none focus:border-orange-500"
           >
             <option value="todas">Todas las Salas (1 a 4)</option>
-            <option value={1}>Sala 1 - Master Stage</option>
-            <option value={2}>Sala 2 - Rocker Studio</option>
-            <option value={3}>Sala 3 - Acoustic & Jazz</option>
-            <option value={4}>Sala 4 - Indie Rehearsal</option>
+            <option value={1}>Sala 1 - Azul / Neon</option>
+            <option value={2}>Sala 2 - Roja</option>
+            <option value={3}>Sala 3 - Naranja</option>
+            <option value={4}>Sala 4 - Blanca</option>
           </select>
         </div>
 
@@ -273,7 +273,7 @@ export const ReservationsPage: React.FC = () => {
                     >
                       {/* Folio */}
                       <td className="p-3.5 font-mono text-[11px] text-zinc-400 font-bold">
-                        {res.reservacion_id.slice(0, 8)}...
+                        {String(res.reservacion_id).slice(0, 8)}
                       </td>
 
                       {/* Cliente */}

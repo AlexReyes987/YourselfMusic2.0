@@ -57,6 +57,7 @@ export class ReservationController {
    * POST /api/reservaciones
    * Crea una reservación con validación en servidor para evitar solapamiento de horarios
    * y registra automáticamente el pago correspondiente en la tabla 'pagos'.
+   * Se calcula el monto con base en el número de miembros ($35/persona/hora).
    */
   static async create(req: Request, res: Response, next: NextFunction) {
     try {
@@ -65,6 +66,7 @@ export class ReservationController {
       let horaInicio = String(req.body.hora_inicio ?? req.body.start_time ?? '').trim();
       let horaFin = String(req.body.hora_fin ?? req.body.end_time ?? '').trim();
       const usuarioId = req.user?.id ?? req.body.usuario_id ?? req.body.user_id;
+      const numPersonas = req.body.num_personas ?? req.body.num_miembros;
 
       // 1. Validaciones básicas en servidor
       if (!usuarioId) {
@@ -127,11 +129,12 @@ export class ReservationController {
 
       // 3. Crear reservación y registrar pago con validación estricta de solapamiento
       const resultado = await DatabaseService.crearReservacionConPago({
-        usuario_id: String(usuarioId),
+        usuario_id: usuarioId,
         sala_id: salaId,
         fecha_reservacion: fecha,
         hora_inicio: horaInicio,
         hora_fin: horaFin,
+        num_personas: numPersonas ? Number(numPersonas) : undefined,
         monto_total: montoTotal ? Number(montoTotal) : undefined,
         estado_reservacion: req.body.estado_reservacion,
         pago: pagoBody,

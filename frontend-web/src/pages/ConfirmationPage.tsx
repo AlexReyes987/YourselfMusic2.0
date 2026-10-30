@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { CheckCircle2, Clock, Calendar, MapPin, ArrowLeft, Volume2, CreditCard, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, Clock, Calendar, MapPin, ArrowLeft, Volume2, CreditCard, ShieldCheck, Users } from 'lucide-react';
 
 export const ConfirmationPage: React.FC = () => {
   const location = useLocation();
@@ -9,6 +9,7 @@ export const ConfirmationPage: React.FC = () => {
     roomName?: string;
     date?: string;
     hours?: string;
+    numMiembros?: number;
     paymentMethod?: string;
     totalPrice?: number;
     status?: string;
@@ -43,7 +44,7 @@ export const ConfirmationPage: React.FC = () => {
         <p className="text-xs sm:text-sm text-zinc-400 mt-1 max-w-md mx-auto">
           {isConfirmed
             ? 'Tu sala de ensayo ha quedado apartada y confirmada en Supabase. Te esperamos en YourSelf Music.'
-            : 'Tu pago por transferencia SPEI está en proceso de validación administrativa. Recibirás confirmación pronto.'}
+            : 'Tu pago por transferencia SPEI está registrado en Supabase y en proceso de validación administrativa. Recibirás confirmación pronto.'}
         </p>
       </div>
 
@@ -67,6 +68,13 @@ export const ConfirmationPage: React.FC = () => {
           </div>
         )}
 
+        {state?.numMiembros && (
+          <div className="flex items-center gap-2 text-zinc-300">
+            <Users className="w-4 h-4 text-orange-400" />
+            <span>Integrantes / Músicos: <strong className="text-white">{state.numMiembros} {state.numMiembros === 1 ? 'persona' : 'personas'}</strong> ($35 MXN por persona/h)</span>
+          </div>
+        )}
+
         <div className="flex items-center gap-2 text-zinc-300">
           <Calendar className="w-4 h-4 text-orange-400" />
           <span>Fecha y Bloque: <strong className="text-white">{state?.date || 'Fecha'}</strong> {state?.hours && `(${state.hours})`}</span>
@@ -75,7 +83,7 @@ export const ConfirmationPage: React.FC = () => {
         {state?.totalPrice && (
           <div className="flex items-center gap-2 text-zinc-300">
             <CreditCard className="w-4 h-4 text-orange-400" />
-            <span>Monto: <strong className="text-emerald-400">${state.totalPrice} MXN</strong> ({state.paymentMethod === 'card' ? 'Tarjeta Bancaria' : 'Transferencia SPEI'})</span>
+            <span>Monto Total: <strong className="text-emerald-400">${state.totalPrice} MXN</strong> ({state.paymentMethod === 'card' ? 'Tarjeta Bancaria' : 'Transferencia SPEI'})</span>
           </div>
         )}
 

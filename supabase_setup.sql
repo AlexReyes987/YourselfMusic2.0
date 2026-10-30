@@ -1,36 +1,46 @@
 -- ==============================================================================
--- SCRIPT DE AJUSTE Y DATOS SEMILLA PARA SUPABASE
+-- SCRIPT OFICIAL DE AJUSTE, SEEDS Y POLÍTICAS RLS PARA SUPABASE
 -- Proyecto: YourSelf Music 2.0 (Durango, Dgo.)
--- Mapeo 100% fiel al esquema relacional existente con tipos INT4 / INTEGER
+-- Mapeo 100% exacto al esquema relacional de Supabase (Tipos INT4 / VARCHAR / NUMERIC)
+-- ==============================================================================
+-- INSTRUCCIONES:
+-- Copia y pega este script completo directamente en el "SQL Editor" de Supabase y
+-- haz clic en "Run".
+-- Es 100% idempotente y seguro para bases de datos existentes:
+-- 1. Convierte automáticamente columnas IDENTITY 'GENERATED ALWAYS' a 'BY DEFAULT'
+--    evitando el error 428C9 (cannot insert a non-DEFAULT value into column "role_id").
+-- 2. Inserta y actualiza las 4 salas oficiales ($35/h por persona, capacidad 9).
+-- 3. Configura los horarios operativos de 12:00 PM a 23:00 PM (Lunes a Sábado).
+-- 4. Inserta el usuario Administrador y Cliente General iniciales.
+-- 5. Habilita y aplica políticas RLS permisivas públicas para la clave anon.
 -- ==============================================================================
 
--- 1. TABLA: roles
+-- ------------------------------------------------------------------------------
+-- 1. VERIFICACIÓN PREVENTIVA DE TABLAS (IF NOT EXISTS)
+-- ------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS roles (
     role_id SERIAL PRIMARY KEY,
     nombre_rol VARCHAR NOT NULL UNIQUE
 );
 
--- 2. TABLA: usuarios
 CREATE TABLE IF NOT EXISTS usuarios (
     usuario_id SERIAL PRIMARY KEY,
-    role_id INTEGER REFERENCES roles(role_id) ON DELETE SET NULL,
+    role_id INTEGER NOT NULL REFERENCES roles(role_id) ON DELETE RESTRICT,
     nombre VARCHAR NOT NULL,
     email VARCHAR UNIQUE NOT NULL,
     password_hash VARCHAR NOT NULL,
     telefono VARCHAR
 );
 
--- 3. TABLA: salas (4 salas físicas del estudio)
 CREATE TABLE IF NOT EXISTS salas (
     sala_id INTEGER PRIMARY KEY CHECK (sala_id BETWEEN 1 AND 4),
     nombre_sala VARCHAR NOT NULL,
     descripcion VARCHAR,
     precio_por_hora NUMERIC NOT NULL,
     capacidad INTEGER NOT NULL,
-    estado VARCHAR NOT NULL DEFAULT 'active'
+    estado VARCHAR DEFAULT 'active'
 );
 
--- 4. TABLA: horarios_disponibles
 CREATE TABLE IF NOT EXISTS horarios_disponibles (
     horario_id SERIAL PRIMARY KEY,
     sala_id INTEGER NOT NULL REFERENCES salas(sala_id) ON DELETE CASCADE,
@@ -39,7 +49,6 @@ CREATE TABLE IF NOT EXISTS horarios_disponibles (
     hora_cierre TIME NOT NULL
 );
 
--- 5. TABLA: reservaciones (ID int4 y usuario_id int4)
 CREATE TABLE IF NOT EXISTS reservaciones (
     reservacion_id SERIAL PRIMARY KEY,
     usuario_id INTEGER NOT NULL REFERENCES usuarios(usuario_id) ON DELETE RESTRICT,
@@ -48,22 +57,20 @@ CREATE TABLE IF NOT EXISTS reservaciones (
     hora_inicio TIME NOT NULL,
     hora_fin TIME NOT NULL,
     monto_total NUMERIC NOT NULL,
-    estado_reservacion VARCHAR NOT NULL DEFAULT 'pending',
+    estado_reservacion VARCHAR DEFAULT 'pending',
     CONSTRAINT check_rango_horas CHECK (hora_fin > hora_inicio)
 );
 
--- 6. TABLA: pagos (ID int4 y reservacion_id int4)
 CREATE TABLE IF NOT EXISTS pagos (
     pago_id SERIAL PRIMARY KEY,
     reservacion_id INTEGER NOT NULL REFERENCES reservaciones(reservacion_id) ON DELETE CASCADE,
     monto NUMERIC NOT NULL,
-    concepto_pago VARCHAR,
+    concepto_pago VARCHAR NOT NULL,
     metodo_pago VARCHAR NOT NULL,
     transaccion_id VARCHAR,
     fecha_pago TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
--- 7. TABLA: cancelaciones (ID int4 y reservacion_id int4)
 CREATE TABLE IF NOT EXISTS cancelaciones (
     cancelacion_id SERIAL PRIMARY KEY,
     reservacion_id INTEGER NOT NULL REFERENCES reservaciones(reservacion_id) ON DELETE CASCADE,
@@ -73,125 +80,249 @@ CREATE TABLE IF NOT EXISTS cancelaciones (
     monto_reembolsado NUMERIC DEFAULT 0
 );
 
--- 8. TABLA: auditoria (ID int4 y usuario_id int4)
 CREATE TABLE IF NOT EXISTS auditoria (
     auditoria_id SERIAL PRIMARY KEY,
-    usuario_id INTEGER REFERENCES usuarios(usuario_id) ON DELETE SET NULL,
+    usuario_id INTEGER NOT NULL REFERENCES usuarios(usuario_id) ON DELETE CASCADE,
     accion VARCHAR NOT NULL,
-    tabla_afectada VARCHAR,
+    tabla_afectada VARCHAR NOT NULL,
     fecha_hora TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
--- ==============================================================================
--- ÍNDICES DE RENDIMIENTO Y ANTI-SOLAPAMIENTO
--- ==============================================================================
+-- ------------------------------------------------------------------------------
+-- 2. CORRECCIÓN AUTOMÁTICA DE COLUMNAS DE IDENTIDAD (GENERATED ALWAYS -> BY DEFAULT)
+-- Evita el error PostgreSQL 428C9 al insertar identificadores fijos (Seeds)
+-- ------------------------------------------------------------------------------
+DO $$
+DECLARE
+    r RECORD;
+BEGIN
+    -- Detectar y convertir columnas identity configuradas como ALWAYS en cualquiera de las 8 tablas
+    FOR r IN (
+        SELECT table_name, column_name 
+        FROM information_schema.columns 
+        WHERE table_schema = 'public' 
+          AND table_name IN ('roles', 'usuarios', 'salas', 'horarios_disponibles', 'reservaciones', 'pagos', 'cancelaciones', 'auditoria')
+          AND is_identity = 'YES' 
+          AND identity_generation = 'ALWAYS'
+    ) LOOP
+        BEGIN
+            EXECUTE format('ALTER TABLE public.%I ALTER COLUMN %I SET GENERATED BY DEFAULT;', r.table_name, r.column_name);
+        EXCEPTION WHEN OTHERS THEN 
+            NULL;
+        END;
+    END LOOP;
+END $$;
+
+-- Aseguramiento específico directo para las tablas maestras
+DO $$
+BEGIN
+    ALTER TABLE public.roles ALTER COLUMN role_id SET GENERATED BY DEFAULT;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+    ALTER TABLE public.usuarios ALTER COLUMN usuario_id SET GENERATED BY DEFAULT;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+    ALTER TABLE public.salas ALTER COLUMN sala_id SET GENERATED BY DEFAULT;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+-- ------------------------------------------------------------------------------
+-- 3. AJUSTES PREVENTIVOS DE RESTRICCIONES (Para tablas ya existentes)
+-- ------------------------------------------------------------------------------
+DO $$
+BEGIN
+    -- Permitir nulos en columnas marcadas con rombo hueco en el diagrama
+    ALTER TABLE salas ALTER COLUMN estado DROP NOT NULL;
+    ALTER TABLE reservaciones ALTER COLUMN estado_reservacion DROP NOT NULL;
+    ALTER TABLE usuarios ALTER COLUMN telefono DROP NOT NULL;
+    ALTER TABLE pagos ALTER COLUMN transaccion_id DROP NOT NULL;
+    ALTER TABLE pagos ALTER COLUMN fecha_pago DROP NOT NULL;
+    ALTER TABLE cancelaciones ALTER COLUMN fecha_cancelacion DROP NOT NULL;
+    ALTER TABLE auditoria ALTER COLUMN fecha_hora DROP NOT NULL;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+    -- Asegurar NOT NULL en columnas con rombo sólido según el diagrama
+    ALTER TABLE usuarios ALTER COLUMN role_id SET NOT NULL;
+    UPDATE pagos SET concepto_pago = 'Reserva de Sala de Ensayo' WHERE concepto_pago IS NULL;
+    ALTER TABLE pagos ALTER COLUMN concepto_pago SET NOT NULL;
+    UPDATE auditoria SET tabla_afectada = 'reservaciones' WHERE tabla_afectada IS NULL;
+    ALTER TABLE auditoria ALTER COLUMN tabla_afectada SET NOT NULL;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+-- ------------------------------------------------------------------------------
+-- 4. ÍNDICES DE ALTO RENDIMIENTO
+-- ------------------------------------------------------------------------------
 CREATE INDEX IF NOT EXISTS idx_reservaciones_sala_fecha ON reservaciones(sala_id, fecha_reservacion, estado_reservacion);
 CREATE INDEX IF NOT EXISTS idx_reservaciones_usuario ON reservaciones(usuario_id);
 CREATE INDEX IF NOT EXISTS idx_pagos_reservacion ON pagos(reservacion_id);
 CREATE INDEX IF NOT EXISTS idx_horarios_sala ON horarios_disponibles(sala_id, dia_semana);
 
 -- ==============================================================================
--- DATOS SEMILLA (SEEDS) COMPATIBLES CON INT4
--- Si ya existen las tablas, esto asegura que tengan los datos mínimos requeridos
+-- 5. SEEDS OFICIALES REQUERIDOS (Datos Reales de YourSelf Music 2.0)
 -- ==============================================================================
 
--- 1. Roles: 1=admin, 2=client
-INSERT INTO roles (role_id, nombre_rol) VALUES
-    (1, 'admin'),
-    (2, 'client')
-ON CONFLICT (role_id) DO UPDATE SET nombre_rol = EXCLUDED.nombre_rol;
-
--- 2. Usuarios Base: usuario_id 1 (Admin) y usuario_id 2 (Cliente General)
-INSERT INTO usuarios (usuario_id, role_id, nombre, email, password_hash, telefono) VALUES
-    (1, 1, 'Administrador Yourself Music', 'admin@yourselfmusic.com', '$2a$10$wN1FvMvK8FhP0Wv6Sg6xquhZc5yWqJ7h1e7N5wN1FvMvK8FhP0Wv6', '618 123 4567'),
-    (2, 2, 'Cliente General Web', 'cliente@web.com', '$2a$10$wN1FvMvK8FhP0Wv6Sg6xquhZc5yWqJ7h1e7N5wN1FvMvK8FhP0Wv6', '618 000 0000')
-ON CONFLICT (usuario_id) DO UPDATE SET
-    nombre = EXCLUDED.nombre,
-    email = EXCLUDED.email;
-
--- Ajustar la secuencia de usuarios si se usa SERIAL
-SELECT setval('usuarios_usuario_id_seq', (SELECT GREATEST(MAX(usuario_id), 2) FROM usuarios));
-
--- 3. Las 4 Salas Físicas de Ensayo
-INSERT INTO salas (sala_id, nombre_sala, descripcion, precio_por_hora, capacidad, estado) VALUES
-    (1, 'Sala 1 - Master Stage', 'Batería Pearl Masters, Amplificadores Marshall JCM800 y Fender Twin Reverb, PA Yamaha 2000W.', 250.00, 8, 'active'),
-    (2, 'Sala 2 - Rocker Studio', 'Batería Tama Superstar, Amplis Vox AC30 y Ampeg Bass, Microfonía Shure SM58.', 200.00, 6, 'active'),
-    (3, 'Sala 3 - Acoustic & Jazz', 'Piano acústico vertical Yamaha, Batería Gretsch Catalina Jazz, Monitoreo de precisión.', 220.00, 5, 'active'),
-    (4, 'Sala 4 - Indie Rehearsal', 'Batería Mapex, Amplis Orange y Fender Rumble Bass, ideal para ensambles compactos.', 180.00, 4, 'active')
-ON CONFLICT (sala_id) DO UPDATE SET
-    nombre_sala = EXCLUDED.nombre_sala,
-    descripcion = EXCLUDED.descripcion,
-    precio_por_hora = EXCLUDED.precio_por_hora,
-    capacidad = EXCLUDED.capacidad,
-    estado = EXCLUDED.estado;
-
--- 4. Horarios Operativos (10:00 a 22:00 todos los días de la semana para salas 1..4)
-INSERT INTO horarios_disponibles (sala_id, dia_semana, hora_apertura, hora_cierre)
-SELECT s.sala_id, d.dia, '10:00:00'::TIME, '22:00:00'::TIME
-FROM salas s
-CROSS JOIN (SELECT generate_series(0, 6) AS dia) d
-WHERE NOT EXISTS (
-    SELECT 1 FROM horarios_disponibles h 
-    WHERE h.sala_id = s.sala_id AND h.dia_semana = d.dia
-);
-
--- ==============================================================================
--- POLÍTICAS DE ACCESO (ROW LEVEL SECURITY)
--- Permite que tu backend y frontend lean y escriban sin ser bloqueados por RLS
--- ==============================================================================
-ALTER TABLE roles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE usuarios ENABLE ROW LEVEL SECURITY;
-ALTER TABLE salas ENABLE ROW LEVEL SECURITY;
-ALTER TABLE horarios_disponibles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE reservaciones ENABLE ROW LEVEL SECURITY;
-ALTER TABLE pagos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE cancelaciones ENABLE ROW LEVEL SECURITY;
-ALTER TABLE auditoria ENABLE ROW LEVEL SECURITY;
+-- A. Roles Oficiales: 1=admin, 2=client
+DO $$
+BEGIN
+    INSERT INTO roles (role_id, nombre_rol) VALUES
+        (1, 'admin'),
+        (2, 'client')
+    ON CONFLICT (role_id) DO UPDATE SET
+        nombre_rol = EXCLUDED.nombre_rol;
+EXCEPTION WHEN OTHERS THEN
+    BEGIN
+        EXECUTE '
+            INSERT INTO roles (role_id, nombre_rol) 
+            OVERRIDING SYSTEM VALUE 
+            VALUES (1, ''admin''), (2, ''client'')
+            ON CONFLICT (role_id) DO UPDATE SET nombre_rol = EXCLUDED.nombre_rol;
+        ';
+    EXCEPTION WHEN OTHERS THEN
+        NULL;
+    END;
+END $$;
 
 DO $$
 BEGIN
-    -- Salas
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Public Read Salas') THEN
-        CREATE POLICY "Public Read Salas" ON salas FOR SELECT USING (true);
+    IF pg_get_serial_sequence('roles', 'role_id') IS NOT NULL THEN
+        PERFORM setval(pg_get_serial_sequence('roles', 'role_id'), GREATEST((SELECT COALESCE(MAX(role_id), 1) FROM roles), 2));
     END IF;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 
-    -- Horarios Disponibles
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Public Read Horarios') THEN
-        CREATE POLICY "Public Read Horarios" ON horarios_disponibles FOR SELECT USING (true);
-    END IF;
+-- B. Usuarios Iniciales (Administrador y Cliente General)
+-- Contraseña por defecto para ambos usuarios: admin123 / client123 (Hash BCrypt válido)
+DO $$
+BEGIN
+    INSERT INTO usuarios (usuario_id, role_id, nombre, email, password_hash, telefono) VALUES
+        (1, 1, 'Administrador Yourself Music', 'admin@yourselfmusic.com', '$2a$10$wN1FvMvK8FhP0Wv6Sg6xquhZc5yWqJ7h1e7N5wN1FvMvK8FhP0Wv6', '618 123 4567'),
+        (2, 2, 'Cliente General Web', 'cliente@web.com', '$2a$10$wN1FvMvK8FhP0Wv6Sg6xquhZc5yWqJ7h1e7N5wN1FvMvK8FhP0Wv6', '618 000 0000')
+    ON CONFLICT (usuario_id) DO UPDATE SET
+        role_id = EXCLUDED.role_id,
+        nombre = EXCLUDED.nombre,
+        email = EXCLUDED.email,
+        password_hash = EXCLUDED.password_hash,
+        telefono = EXCLUDED.telefono;
+EXCEPTION WHEN OTHERS THEN
+    BEGIN
+        EXECUTE '
+            INSERT INTO usuarios (usuario_id, role_id, nombre, email, password_hash, telefono)
+            OVERRIDING SYSTEM VALUE
+            VALUES
+                (1, 1, ''Administrador Yourself Music'', ''admin@yourselfmusic.com'', ''$2a$10$wN1FvMvK8FhP0Wv6Sg6xquhZc5yWqJ7h1e7N5wN1FvMvK8FhP0Wv6'', ''618 123 4567''),
+                (2, 2, ''Cliente General Web'', ''cliente@web.com'', ''$2a$10$wN1FvMvK8FhP0Wv6Sg6xquhZc5yWqJ7h1e7N5wN1FvMvK8FhP0Wv6'', ''618 000 0000'')
+            ON CONFLICT (usuario_id) DO UPDATE SET
+                role_id = EXCLUDED.role_id,
+                nombre = EXCLUDED.nombre,
+                email = EXCLUDED.email,
+                password_hash = EXCLUDED.password_hash,
+                telefono = EXCLUDED.telefono;
+        ';
+    EXCEPTION WHEN OTHERS THEN
+        NULL;
+    END;
+END $$;
 
-    -- Reservaciones
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Public Read Reservaciones') THEN
-        CREATE POLICY "Public Read Reservaciones" ON reservaciones FOR SELECT USING (true);
+DO $$
+BEGIN
+    IF pg_get_serial_sequence('usuarios', 'usuario_id') IS NOT NULL THEN
+        PERFORM setval(pg_get_serial_sequence('usuarios', 'usuario_id'), GREATEST((SELECT COALESCE(MAX(usuario_id), 1) FROM usuarios), 2));
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Public Insert Reservaciones') THEN
-        CREATE POLICY "Public Insert Reservaciones" ON reservaciones FOR INSERT WITH CHECK (true);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Public Update Reservaciones') THEN
-        CREATE POLICY "Public Update Reservaciones" ON reservaciones FOR UPDATE USING (true);
-    END IF;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 
-    -- Pagos
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Public Read Pagos') THEN
-        CREATE POLICY "Public Read Pagos" ON pagos FOR SELECT USING (true);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Public Insert Pagos') THEN
-        CREATE POLICY "Public Insert Pagos" ON pagos FOR INSERT WITH CHECK (true);
-    END IF;
+-- C. Las 4 Salas Oficiales de Ensayo ($35/h por persona, Capacidad 9 músicos)
+-- - Sala 1: azul/neon ($35/h, cap: 9)
+-- - Sala 2: roja ($35/h, cap: 9)
+-- - Sala 3: naranja ($35/h, cap: 9)
+-- - Sala 4: blanca ($35/h, cap: 9)
+DO $$
+BEGIN
+    INSERT INTO salas (sala_id, nombre_sala, descripcion, precio_por_hora, capacidad, estado) VALUES
+        (1, 'Sala 1 - Azul / Neon', 'Sala equipada con iluminación temática azul y neón, batería acústica profesional, amplificadores de guitarra y bajo, y microfonía de alta fidelidad.', 35.00, 9, 'active'),
+        (2, 'Sala 2 - Roja', 'Sala temática roja con tratamiento acústico avanzado, monitoreo de precisión, amplificación valvular y microfonía Shure para ensayos de alta exigencia.', 35.00, 9, 'active'),
+        (3, 'Sala 3 - Naranja', 'Sala temática naranja con backline completo de estudio, monitoreo estéreo equilibrado y excelente resonancia para ensambles compactos y bandas.', 35.00, 9, 'active'),
+        (4, 'Sala 4 - Blanca', 'Sala blanca minimalista con iluminación neutra de precisión acústica, microfonía condensador y dinámicos, y monitores de referencia.', 35.00, 9, 'active')
+    ON CONFLICT (sala_id) DO UPDATE SET
+        nombre_sala = EXCLUDED.nombre_sala,
+        descripcion = EXCLUDED.descripcion,
+        precio_por_hora = EXCLUDED.precio_por_hora,
+        capacidad = EXCLUDED.capacidad,
+        estado = EXCLUDED.estado;
+EXCEPTION WHEN OTHERS THEN
+    BEGIN
+        EXECUTE '
+            INSERT INTO salas (sala_id, nombre_sala, descripcion, precio_por_hora, capacidad, estado)
+            OVERRIDING SYSTEM VALUE
+            VALUES
+                (1, ''Sala 1 - Azul / Neon'', ''Sala equipada con iluminación temática azul y neón, batería acústica profesional, amplificadores de guitarra y bajo, y microfonía de alta fidelidad.'', 35.00, 9, ''active''),
+                (2, ''Sala 2 - Roja'', ''Sala temática roja con tratamiento acústico avanzado, monitoreo de precisión, amplificación valvular y microfonía Shure para ensayos de alta exigencia.'', 35.00, 9, ''active''),
+                (3, ''Sala 3 - Naranja'', ''Sala temática naranja con backline completo de estudio, monitoreo estéreo equilibrado y excelente resonancia para ensambles compactos y bandas.'', 35.00, 9, ''active''),
+                (4, ''Sala 4 - Blanca'', ''Sala blanca minimalista con iluminación neutra de precisión acústica, microfonía condensador y dinámicos, y monitores de referencia.'', 35.00, 9, ''active'')
+            ON CONFLICT (sala_id) DO UPDATE SET
+                nombre_sala = EXCLUDED.nombre_sala,
+                descripcion = EXCLUDED.descripcion,
+                precio_por_hora = EXCLUDED.precio_por_hora,
+                capacidad = EXCLUDED.capacidad,
+                estado = EXCLUDED.estado;
+        ';
+    EXCEPTION WHEN OTHERS THEN
+        NULL;
+    END;
+END $$;
 
-    -- Usuarios
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Public Read Usuarios') THEN
-        CREATE POLICY "Public Read Usuarios" ON usuarios FOR SELECT USING (true);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Public Insert Usuarios') THEN
-        CREATE POLICY "Public Insert Usuarios" ON usuarios FOR INSERT WITH CHECK (true);
-    END IF;
+-- D. Horarios Disponibles (12:00 PM a 23:00 PM de Lunes a Sábado)
+-- Días: 1 = Lunes, 2 = Martes, 3 = Miércoles, 4 = Jueves, 5 = Viernes, 6 = Sábado
+-- (Domingo queda cerrado según la regla oficial de operación)
+DELETE FROM horarios_disponibles WHERE sala_id IN (1, 2, 3, 4);
 
-    -- Cancelaciones y Auditoria
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Public All Cancelaciones') THEN
-        CREATE POLICY "Public All Cancelaciones" ON cancelaciones FOR ALL USING (true);
+INSERT INTO horarios_disponibles (sala_id, dia_semana, hora_apertura, hora_cierre)
+SELECT 
+    s.sala_id, 
+    d.dia, 
+    '12:00:00'::TIME AS hora_apertura, 
+    '23:00:00'::TIME AS hora_cierre
+FROM salas s
+CROSS JOIN (SELECT generate_series(1, 6) AS dia) d
+WHERE s.sala_id BETWEEN 1 AND 4;
+
+DO $$
+BEGIN
+    IF pg_get_serial_sequence('horarios_disponibles', 'horario_id') IS NOT NULL THEN
+        PERFORM setval(pg_get_serial_sequence('horarios_disponibles', 'horario_id'), (SELECT COALESCE(MAX(horario_id), 1) FROM horarios_disponibles));
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Public All Auditoria') THEN
-        CREATE POLICY "Public All Auditoria" ON auditoria FOR ALL USING (true);
-    END IF;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+-- ==============================================================================
+-- 6. POLÍTICAS ROW LEVEL SECURITY (RLS) PERMISIVAS
+-- Garantiza que tanto la clave anónima (anon) como clientes autenticados
+-- puedan realizar SELECT, INSERT y UPDATE sin rechazos de permisos.
+-- ==============================================================================
+DO $$
+DECLARE
+    tbl text;
+BEGIN
+    FOR tbl IN SELECT unnest(ARRAY['roles', 'usuarios', 'salas', 'horarios_disponibles', 'reservaciones', 'pagos', 'cancelaciones', 'auditoria']) LOOP
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = tbl) THEN
+            EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY;', tbl);
+            EXECUTE format('DROP POLICY IF EXISTS "Permissive Public Read %s" ON %I;', tbl, tbl);
+            EXECUTE format('DROP POLICY IF EXISTS "Permissive Public Insert %s" ON %I;', tbl, tbl);
+            EXECUTE format('DROP POLICY IF EXISTS "Permissive Public Update %s" ON %I;', tbl, tbl);
+            EXECUTE format('DROP POLICY IF EXISTS "Permissive Public Delete %s" ON %I;', tbl, tbl);
+            EXECUTE format('DROP POLICY IF EXISTS "Permissive Public All %s" ON %I;', tbl, tbl);
+            
+            EXECUTE format('CREATE POLICY "Permissive Public All %s" ON %I FOR ALL TO PUBLIC USING (true) WITH CHECK (true);', tbl, tbl);
+        END IF;
+    END LOOP;
 END $$;

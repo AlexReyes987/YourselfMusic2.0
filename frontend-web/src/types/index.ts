@@ -31,7 +31,7 @@ export interface DisponibilidadResponse {
   horas_libres: number[];
   rangos_libres: RangoLibre[];
   reservaciones_ocupadas: Array<{
-    reservacion_id: string;
+    reservacion_id: string | number;
     hora_inicio: string;
     hora_fin: string;
     estado: string;
@@ -39,12 +39,13 @@ export interface DisponibilidadResponse {
 }
 
 export interface Reservacion {
-  reservacion_id: string;
-  usuario_id: string;
+  reservacion_id: string | number;
+  usuario_id: string | number;
   sala_id: number;
   fecha_reservacion: string;
   hora_inicio: string;
   hora_fin: string;
+  num_personas?: number;
   monto_total: number;
   estado_reservacion: 'pending' | 'confirmed' | 'cancelled' | string;
   nombre_sala?: string;
@@ -54,8 +55,8 @@ export interface Reservacion {
 export type Reservation = Reservacion;
 
 export interface Pago {
-  pago_id: string;
-  reservacion_id: string;
+  pago_id: string | number;
+  reservacion_id: string | number;
   monto: number;
   concepto_pago: string;
   metodo_pago: 'card' | 'transfer' | 'tarjeta' | 'transferencia' | string;
@@ -64,7 +65,7 @@ export interface Pago {
 }
 
 export interface CreateReservationDto {
-  usuario_id?: string;
+  usuario_id?: string | number;
   cliente_nombre?: string;
   cliente_email?: string;
   cliente_telefono?: string;
@@ -72,6 +73,7 @@ export interface CreateReservationDto {
   fecha_reservacion: string;
   hora_inicio: string;
   hora_fin: string;
+  num_personas?: number;
   monto_total?: number;
   pago?: {
     metodo_pago: 'card' | 'transfer';
@@ -82,8 +84,8 @@ export interface CreateReservationDto {
 }
 
 export interface User {
-  id: string;
-  usuario_id?: string;
+  id: string | number;
+  usuario_id?: string | number;
   name: string;
   nombre?: string;
   email: string;

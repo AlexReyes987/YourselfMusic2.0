@@ -1,39 +1,58 @@
 import React, { useEffect, useState } from 'react';
-import { Calendar, Clock, Volume2, ShieldCheck, Plus } from 'lucide-react';
+import { Calendar, Clock, Volume2, ShieldCheck, Plus, LogIn, User } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Reservacion } from '../types';
 import { reservationService } from '../services/reservationService';
+import { useAuth } from '../context/AuthContext';
 
 export const MyReservationsPage: React.FC = () => {
+  const { isAuthenticated, user } = useAuth();
   const [reservations, setReservations] = useState<Reservacion[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadReservations() {
+      if (!isAuthenticated) {
+        setLoading(false);
+        return;
+      }
+
       try {
         const data = await reservationService.getMyReservations();
         setReservations(data || []);
-      } catch {
-        // Fallback demo local si no hay token o backend no está corriendo
-        setReservations([
-          {
-            reservacion_id: 'YM-DEMO-01',
-            usuario_id: 'usr-1',
-            sala_id: 1,
-            nombre_sala: 'Sala 1 - Master Stage',
-            fecha_reservacion: new Date().toISOString().split('T')[0],
-            hora_inicio: '16:00:00',
-            hora_fin: '18:00:00',
-            monto_total: 500,
-            estado_reservacion: 'confirmed',
-          },
-        ]);
+      } catch (err) {
+        console.warn('No se pudieron obtener las reservaciones del servidor:', err);
+        setReservations([]);
       } finally {
         setLoading(false);
       }
     }
     loadReservations();
-  }, []);
+  }, [isAuthenticated]);
+
+  if (!isAuthenticated) {
+    return (
+      <div className="max-w-md mx-auto py-20 px-4 text-center space-y-4">
+        <div className="w-12 h-12 rounded-2xl bg-orange-500/10 border border-orange-500/20 text-orange-400 flex items-center justify-center mx-auto">
+          <User className="w-6 h-6 text-orange-500" />
+        </div>
+        <h2 className="text-xl font-bold text-white">Inicia sesión para consultar tus reservaciones</h2>
+        <p className="text-xs text-zinc-400">
+          Para ver tus ensayos agendados y comprobantes, debes acceder con tu cuenta de cliente en YourSelf Music.
+        </p>
+        <div className="pt-2">
+          <Link
+            to="/login"
+            state={{ from: '/my-reservations' }}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-orange-500 hover:bg-orange-600 rounded-xl text-white font-bold text-xs transition-colors"
+          >
+            <LogIn className="w-4 h-4" />
+            <span>Iniciar Sesión</span>
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-6">
@@ -41,7 +60,8 @@ export const MyReservationsPage: React.FC = () => {
         <div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-white">Mis Reservaciones</h1>
           <p className="text-xs sm:text-sm text-zinc-400 mt-1">
-            Historial de salas reservadas en YourSelf Music (sincronizado con Supabase).
+            Historial de salas reservadas en YourSelf Music para{' '}
+            <strong className="text-zinc-200">{user?.name || user?.nombre || user?.email}</strong>.
           </p>
         </div>
 

@@ -44,7 +44,7 @@ export const TransfersPage: React.FC = () => {
     setIsProcessing(true);
     try {
       await adminSupabaseService.confirmarTransferencia(res.reservacion_id);
-      showFeedback('success', `Transferencia para la reserva ${res.reservacion_id.slice(0, 8)} aprobada con éxito. Estado actualizado a "Confirmada".`);
+      showFeedback('success', `Transferencia para la reserva ${String(res.reservacion_id).slice(0, 8)} aprobada con éxito. Estado actualizado a "Confirmada".`);
       await cargarTransferencias();
     } catch (err: any) {
       showFeedback('error', `Error al aprobar: ${err.message}`);
@@ -149,7 +149,7 @@ export const TransfersPage: React.FC = () => {
               ) : (
                 reservaciones.map((item) => {
                   const pago = item.pagos?.[0];
-                  const ref = pago?.transaccion_id || `SPEI-${item.reservacion_id.slice(0, 6)}`;
+                  const ref = pago?.transaccion_id || `SPEI-${String(item.reservacion_id).slice(0, 6)}`;
                   const clienteNombre = item.usuarios?.nombre || 'Cliente';
                   const salaNombre = item.salas?.nombre_sala || `Sala ${item.sala_id}`;
                   const isPending = item.estado_reservacion === 'pending';

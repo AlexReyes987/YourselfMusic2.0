@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   CreditCard,
@@ -9,6 +9,7 @@ import {
   Clock,
   Volume2,
   User,
+  Users,
   Mail,
   Phone,
   AlertCircle,
@@ -21,7 +22,7 @@ import { useAuth } from '../context/AuthContext';
 export const PaymentPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
 
   const bookingData = location.state as {
     salaId: number;
@@ -34,13 +35,41 @@ export const PaymentPage: React.FC = () => {
     horaFin: string;
     startHour: number;
     duration: number;
+    numMiembros?: number;
     totalPrice: number;
   } | undefined;
 
-  // Estado del formulario del cliente
+  // Si el usuario no está autenticado, redirigir a /login preservando los datos de la reserva
+  useEffect(() => {
+    if (!isAuthenticated) {
+      if (bookingData) {
+        try {
+          sessionStorage.setItem('pendingBooking', JSON.stringify(bookingData));
+        } catch {}
+      }
+      navigate('/login', {
+        state: {
+          from: '/payment',
+          bookingData,
+          message: 'Para registrar tu reservación oficial en YourSelf Music, primero debes iniciar sesión o crear tu cuenta.',
+        },
+        replace: true,
+      });
+    }
+  }, [isAuthenticated, bookingData, navigate]);
+
+  // Estado del formulario del cliente (sincronizado con el usuario autenticado)
   const [nombre, setNombre] = useState(user?.name || user?.nombre || '');
   const [email, setEmail] = useState(user?.email || '');
   const [telefono, setTelefono] = useState(user?.phone || user?.telefono || '');
+
+  useEffect(() => {
+    if (user) {
+      if (!nombre) setNombre(user.name || user.nombre || '');
+      if (!email) setEmail(user.email || '');
+      if (!telefono) setTelefono(user.phone || user.telefono || '');
+    }
+  }, [user]);
 
   // Método de pago (tarjeta o transferencia SPEI)
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'transfer'>('card');
@@ -69,18 +98,24 @@ export const PaymentPage: React.FC = () => {
     );
   }
 
+  const numPersonas = bookingData.numMiembros && bookingData.numMiembros > 0 ? bookingData.numMiembros : 1;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsProcessing(true);
     setErrorMessage(null);
 
     try {
+      const usuarioId = user?.id || user?.usuario_id;
+      if (!usuarioId) {
+        setErrorMessage('Debes haber iniciado sesión para confirmar la reservación.');
+        setIsProcessing(false);
+        return;
+      }
+
       const transaccionId = paymentMethod === 'card'
         ? `CARD-STRIPE-${Date.now()}`
         : transferRef.trim() || `SPEI-${Date.now()}`;
-
-      // Usar UUID de usuario autenticado o UUID predeterminado de cliente invitado
-      const usuarioId = user?.id || user?.usuario_id || '00000000-0000-0000-0000-000000000001';
 
       const payload = {
         usuario_id: usuarioId,
@@ -91,11 +126,12 @@ export const PaymentPage: React.FC = () => {
         fecha_reservacion: bookingData.fecha,
         hora_inicio: bookingData.horaInicio,
         hora_fin: bookingData.horaFin,
+        num_personas: numPersonas,
         monto_total: bookingData.totalPrice,
         pago: {
           metodo_pago: paymentMethod,
           monto: bookingData.totalPrice,
-          concepto_pago: `Ensayo ${bookingData.nombreSala} (${bookingData.fecha} ${bookingData.horaInicio.slice(0, 5)}-${bookingData.horaFin.slice(0, 5)})`,
+          concepto_pago: `Ensayo ${bookingData.nombreSala} (${bookingData.fecha} ${bookingData.horaInicio.slice(0, 5)}-${bookingData.horaFin.slice(0, 5)}) - ${numPersonas} integrantes`,
           transaccion_id: transaccionId,
         },
       };
@@ -106,9 +142,14 @@ export const PaymentPage: React.FC = () => {
       try {
         const response = await reservationService.create(payload as any);
         if (response?.reservacion) {
-          folio = response.reservacion.reservacion_id;
+          folio = String(response.reservacion.reservacion_id);
           statusReservacion = response.reservacion.estado_reservacion || statusReservacion;
         }
+
+        // Limpiar reservación pendiente tras éxito
+        try {
+          sessionStorage.removeItem('pendingBooking');
+        } catch {}
       } catch (apiErr: any) {
         // Si el backend responde con error 409 (conflicto de solapamiento), mostramos mensaje estricto
         if (apiErr.response?.status === 409) {
@@ -129,6 +170,7 @@ export const PaymentPage: React.FC = () => {
           roomName: bookingData.nombreSala,
           date: bookingData.fecha,
           hours: `${bookingData.horaInicio.slice(0, 5)} a ${bookingData.horaFin.slice(0, 5)}`,
+          numMiembros: numPersonas,
           paymentMethod,
           totalPrice: bookingData.totalPrice,
           status: statusReservacion,
@@ -168,13 +210,16 @@ export const PaymentPage: React.FC = () => {
 
       {/* Banner de resumen de la cita */}
       <div className="bg-zinc-900/60 border border-zinc-800 p-5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           <div className="flex items-center gap-2">
             <Volume2 className="w-4 h-4 text-orange-400" />
             <h2 className="text-base font-bold text-white">{bookingData.nombreSala}</h2>
-            <span className="text-xs text-zinc-400">({bookingData.capacidad} músicos)</span>
+            <span className="text-xs text-orange-400 font-semibold flex items-center gap-1 bg-orange-500/10 px-2 py-0.5 rounded-full border border-orange-500/20">
+              <Users className="w-3 h-3" />
+              {numPersonas} {numPersonas === 1 ? 'músico' : 'músicos'}
+            </span>
           </div>
-          <div className="flex items-center gap-4 text-xs text-zinc-400">
+          <div className="flex flex-wrap items-center gap-4 text-xs text-zinc-400">
             <span className="flex items-center gap-1">
               <Calendar className="w-3.5 h-3.5 text-orange-400" />
               {bookingData.fecha}
@@ -182,6 +227,9 @@ export const PaymentPage: React.FC = () => {
             <span className="flex items-center gap-1">
               <Clock className="w-3.5 h-3.5 text-orange-400" />
               {bookingData.horaInicio.slice(0, 5)} - {bookingData.horaFin.slice(0, 5)} ({bookingData.duration} hrs)
+            </span>
+            <span className="text-zinc-500 font-mono text-[11px]">
+              Tarifa: {numPersonas} pers. × $35 MXN × {bookingData.duration} h
             </span>
           </div>
         </div>
@@ -205,10 +253,34 @@ export const PaymentPage: React.FC = () => {
       <form onSubmit={handleSubmit} className="space-y-8">
         {/* Sección 1: Datos de Contacto del Cliente */}
         <div className="bg-zinc-900/40 border border-zinc-800 p-6 rounded-2xl space-y-4">
-          <div className="flex items-center gap-2 text-sm font-bold text-white border-b border-zinc-800 pb-3">
-            <User className="w-4 h-4 text-orange-400" />
-            <span>1. Datos del Titular de la Reserva</span>
+          <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+            <div className="flex items-center gap-2 text-sm font-bold text-white">
+              <User className="w-4 h-4 text-orange-400" />
+              <span>1. Titular de la Reserva (Cuenta Oficial YourSelf Music)</span>
+            </div>
+            {user && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[11px] font-semibold">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Cliente Verificado en Supabase</span>
+              </span>
+            )}
           </div>
+
+          {user && (
+            <div className="p-3 bg-zinc-800/40 border border-zinc-700/60 rounded-xl text-xs text-zinc-300 flex items-center justify-between">
+              <div className="space-y-0.5">
+                <p className="font-semibold text-white">
+                  Titular: <span className="text-orange-400">{user.name || user.nombre}</span>
+                </p>
+                <p className="text-zinc-400 text-[11px]">
+                  Esta reservación quedará vinculada oficialmente a tu usuario en la tabla <code className="text-zinc-200">usuarios</code> de Supabase.
+                </p>
+              </div>
+              <span className="text-[10px] bg-orange-500/10 text-orange-300 font-mono px-2.5 py-1 rounded-lg border border-orange-500/20">
+                Usuario #{user.id || user.usuario_id}
+              </span>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2 space-y-1.5">
@@ -261,7 +333,7 @@ export const PaymentPage: React.FC = () => {
         <div className="bg-zinc-900/40 border border-zinc-800 p-6 rounded-2xl space-y-5">
           <div className="flex items-center gap-2 text-sm font-bold text-white border-b border-zinc-800 pb-3">
             <CreditCard className="w-4 h-4 text-orange-400" />
-            <span>2. Método de Pago (alimenta tabla 'pagos')</span>
+            <span>2. Método de Pago (alimenta tabla 'pagos' en Supabase)</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -278,7 +350,7 @@ export const PaymentPage: React.FC = () => {
               <div>
                 <p className="text-sm font-bold text-white">Tarjeta de Crédito / Débito</p>
                 <p className="text-xs text-zinc-400 mt-0.5">
-                  Confirmación inmediata en Supabase. Pasarela en línea.
+                  Confirmación inmediata en Supabase (estado 'confirmed').
                 </p>
               </div>
             </button>
@@ -296,7 +368,7 @@ export const PaymentPage: React.FC = () => {
               <div>
                 <p className="text-sm font-bold text-white">Transferencia Bancaria SPEI</p>
                 <p className="text-xs text-zinc-400 mt-0.5">
-                  Estado pendiente hasta aprobación por administración.
+                  Registrada en Supabase (estado 'pending') hasta validación.
                 </p>
               </div>
             </button>
@@ -347,7 +419,7 @@ export const PaymentPage: React.FC = () => {
 
               <div className="flex items-center gap-2 text-[11px] text-zinc-500 pt-1">
                 <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                <span>Transacción encriptada con cifrado SSL de 256 bits.</span>
+                <span>Transacción encriptada con cifrado SSL de 256 bits y registro en Supabase.</span>
               </div>
             </div>
           ) : (
@@ -385,7 +457,7 @@ export const PaymentPage: React.FC = () => {
                   className="w-full px-4 py-2.5 bg-zinc-800/80 border border-zinc-700 rounded-xl text-sm text-white font-mono focus:outline-none focus:border-orange-500"
                 />
                 <span className="text-[11px] text-zinc-500 block">
-                  El personal de YourSelf Music validará este número con la cuenta bancaria.
+                  El personal de YourSelf Music validará este número con la cuenta bancaria para confirmar en Supabase.
                 </span>
               </div>
             </div>
@@ -406,7 +478,7 @@ export const PaymentPage: React.FC = () => {
           ) : (
             <>
               <CheckCircle2 className="w-5 h-5" />
-              <span>Confirmar y Pagar ${bookingData.totalPrice} MXN</span>
+              <span>Confirmar y Pagar ${bookingData.totalPrice} MXN ({numPersonas} integrantes)</span>
             </>
           )}
         </button>

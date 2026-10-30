@@ -5,10 +5,12 @@ import { TimeSlotPicker } from '../components/booking/TimeSlotPicker';
 import { Sala, RangoLibre } from '../types';
 import { roomService } from '../services/roomService';
 import { reservationService } from '../services/reservationService';
-import { Calendar as CalendarIcon, ArrowRight, Music, ShieldCheck, Sparkles, AlertCircle } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { Calendar as CalendarIcon, ArrowRight, Music, ShieldCheck, Sparkles, AlertCircle, Users, Plus, Minus, UserCheck } from 'lucide-react';
 
 export const BookingPage: React.FC = () => {
   const navigate = useNavigate();
+  const { isAuthenticated, user } = useAuth();
 
   // Estados principales
   const [salas, setSalas] = useState<Sala[]>([]);
@@ -18,13 +20,14 @@ export const BookingPage: React.FC = () => {
   });
 
   const [startHour, setStartHour] = useState<number | null>(null);
-  const [duration, setDuration] = useState<number>(2);
+  const [duration, setDuration] = useState<number>(1);
+  const [numMiembros, setNumMiembros] = useState<number>(4); // Por defecto 4 miembros según especificación
 
-  // Estados de disponibilidad en tiempo real
+  // Estados de disponibilidad en tiempo real (12:00 PM a 23:00 PM Lunes a Sábado)
   const [horasLibres, setHorasLibres] = useState<number[]>([]);
   const [rangosLibres, setRangosLibres] = useState<RangoLibre[]>([]);
-  const [horaApertura, setHoraApertura] = useState<string>('10:00:00');
-  const [horaCierre, setHoraCierre] = useState<string>('22:00:00');
+  const [horaApertura, setHoraApertura] = useState<string>('12:00:00');
+  const [horaCierre, setHoraCierre] = useState<string>('23:00:00');
   const [isLoadingDisponibilidad, setIsLoadingDisponibilidad] = useState<boolean>(false);
   const [errorDisponibilidad, setErrorDisponibilidad] = useState<string | null>(null);
 
@@ -56,8 +59,8 @@ export const BookingPage: React.FC = () => {
         const resp = await reservationService.getDisponibilidad(selectedSalaId, selectedDate);
         setHorasLibres(resp.horas_libres || []);
         setRangosLibres(resp.rangos_libres || []);
-        setHoraApertura(resp.horario_operativo?.hora_apertura || '10:00:00');
-        setHoraCierre(resp.horario_operativo?.hora_cierre || '22:00:00');
+        setHoraApertura(resp.horario_operativo?.hora_apertura || '12:00:00');
+        setHoraCierre(resp.horario_operativo?.hora_cierre || '23:00:00');
 
         // Si la hora seleccionada no está en las horas libres, seleccionar la primera disponible
         if (resp.horas_libres && resp.horas_libres.length > 0) {
@@ -68,11 +71,11 @@ export const BookingPage: React.FC = () => {
           setStartHour(null);
         }
       } catch (err: any) {
-        console.warn('Fallo consultando disponibilidad en backend, usando fallback:', err);
-        // Fallback horario estándar (10:00 a 22:00 todas libres para demo si no hay backend activo)
-        const demoLibres = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21];
+        console.warn('Fallo consultando disponibilidad en backend, usando fallback 12:00 a 23:00:', err);
+        // Fallback horario oficial: 12:00 a 23:00 de Lunes a Sábado
+        const demoLibres = [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22];
         setHorasLibres(demoLibres);
-        setRangosLibres([{ hora_inicio: '10:00:00', hora_fin: '22:00:00' }]);
+        setRangosLibres([{ hora_inicio: '12:00:00', hora_fin: '23:00:00' }]);
         if (startHour === null) setStartHour(16);
       } finally {
         setIsLoadingDisponibilidad(false);
@@ -83,7 +86,11 @@ export const BookingPage: React.FC = () => {
   }, [selectedSalaId, selectedDate]);
 
   const selectedSala = salas.find((s) => s.sala_id === selectedSalaId);
-  const totalPrice = selectedSala && startHour !== null ? selectedSala.precio_por_hora * duration : 0;
+  const maxCapacidad = selectedSala?.capacidad || 9;
+
+  // Lógica oficial de cobro: $35 por persona / miembro que asistirá
+  const precioPorPersona = selectedSala?.precio_por_hora || 35;
+  const totalPrice = selectedSala && startHour !== null ? numMiembros * precioPorPersona * duration : 0;
 
   const handleContinueToPayment = () => {
     if (!selectedSala || startHour === null) return;
@@ -91,20 +98,41 @@ export const BookingPage: React.FC = () => {
     const startTimeFormatted = `${String(startHour).padStart(2, '0')}:00:00`;
     const endTimeFormatted = `${String(startHour + duration).padStart(2, '0')}:00:00`;
 
+    const bookingPayload = {
+      salaId: selectedSala.sala_id,
+      nombreSala: selectedSala.nombre_sala,
+      descripcion: selectedSala.descripcion,
+      precioPorHora: precioPorPersona,
+      capacidad: maxCapacidad,
+      fecha: selectedDate,
+      horaInicio: startTimeFormatted,
+      horaFin: endTimeFormatted,
+      startHour,
+      duration,
+      numMiembros,
+      totalPrice,
+    };
+
+    // Si el usuario no ha iniciado sesión, guardar en sessionStorage y redirigir a /login
+    if (!isAuthenticated) {
+      try {
+        sessionStorage.setItem('pendingBooking', JSON.stringify(bookingPayload));
+      } catch (e) {
+        console.warn('Error guardando en sessionStorage:', e);
+      }
+
+      navigate('/login', {
+        state: {
+          from: '/payment',
+          bookingData: bookingPayload,
+          message: 'Para confirmar tu reservación en la sala, por favor inicia sesión o crea tu cuenta.',
+        },
+      });
+      return;
+    }
+
     navigate('/payment', {
-      state: {
-        salaId: selectedSala.sala_id,
-        nombreSala: selectedSala.nombre_sala,
-        descripcion: selectedSala.descripcion,
-        precioPorHora: selectedSala.precio_por_hora,
-        capacidad: selectedSala.capacidad,
-        fecha: selectedDate,
-        horaInicio: startTimeFormatted,
-        horaFin: endTimeFormatted,
-        startHour,
-        duration,
-        totalPrice,
-      },
+      state: bookingPayload,
     });
   };
 
@@ -120,13 +148,13 @@ export const BookingPage: React.FC = () => {
           Reserva tu Sala de Ensayo
         </h1>
         <p className="text-xs sm:text-sm text-zinc-400 mt-1 max-w-2xl">
-          Selecciona una de las 4 salas especializadas, verifica disponibilidad en tiempo real
-          y asegura tu horario sin riesgo de solapamiento.
+          Selecciona una de las 4 salas especializadas ($35 por persona/h, capacidad hasta 9 músicos),
+          especifica tus integrantes y asegura tu bloque de ensayo sin riesgo de solapamiento.
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-        {/* Columna Principal: Selección de Sala y Horarios */}
+        {/* Columna Principal: Selección de Sala, Fecha, Miembros y Horarios */}
         <div className="lg:col-span-2 space-y-8">
           {/* Paso 1: Selección de Fecha */}
           <div className="bg-zinc-900/40 border border-zinc-800 p-5 rounded-2xl space-y-3">
@@ -142,8 +170,8 @@ export const BookingPage: React.FC = () => {
                 onChange={(e) => setSelectedDate(e.target.value)}
                 className="w-full sm:w-auto px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-white font-medium focus:outline-none focus:border-orange-500 cursor-pointer"
               />
-              <span className="text-xs text-zinc-500">
-                Horario de atención: 10:00 AM a 10:00 PM todos los días.
+              <span className="text-xs text-zinc-400">
+                Horario de atención: 12:00 PM a 11:00 PM (Lunes a Sábado).
               </span>
             </div>
           </div>
@@ -153,9 +181,9 @@ export const BookingPage: React.FC = () => {
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
                 <Music className="w-4 h-4 text-orange-400" />
-                <span>2. Selecciona una de nuestras 4 Salas Físicas</span>
+                <span>2. Selecciona una de nuestras 4 Salas Oficiales</span>
               </h2>
-              <span className="text-xs text-zinc-400">4 salas disponibles</span>
+              <span className="text-xs text-orange-400 font-semibold">$35 MXN por persona</span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -170,7 +198,75 @@ export const BookingPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Paso 3: Disponibilidad en Tiempo Real */}
+          {/* Paso 3: Especificar Integrantes / Miembros Asistentes */}
+          <div className="bg-zinc-900/40 border border-zinc-800 p-5 rounded-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 text-sm font-bold text-white">
+                <Users className="w-4 h-4 text-orange-400" />
+                <span>3. ¿Cuántos miembros o personas asistirán?</span>
+              </label>
+              <span className="text-xs font-mono px-2 py-0.5 rounded bg-orange-500/10 text-orange-400 border border-orange-500/30">
+                Capacidad máx: {maxCapacidad} músicos
+              </span>
+            </div>
+
+            <p className="text-xs text-zinc-400">
+              El costo de la sala se calcula por asistente: <strong>$35 MXN por persona</strong>.
+              (Ejemplo: 4 miembros = $140 MXN por hora).
+            </p>
+
+            <div className="flex items-center gap-4">
+              <div className="flex items-center border border-zinc-700 bg-zinc-800 rounded-xl overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setNumMiembros((prev) => Math.max(1, prev - 1))}
+                  disabled={numMiembros <= 1}
+                  className="px-3.5 py-2.5 text-zinc-300 hover:text-white hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Minus className="w-4 h-4" />
+                </button>
+                <span className="px-5 py-2.5 text-base font-extrabold text-white min-w-[3.5rem] text-center">
+                  {numMiembros}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setNumMiembros((prev) => Math.min(maxCapacidad, prev + 1))}
+                  disabled={numMiembros >= maxCapacidad}
+                  className="px-3.5 py-2.5 text-zinc-300 hover:text-white hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9].slice(0, maxCapacidad).map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setNumMiembros(n)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                      numMiembros === n
+                        ? 'bg-orange-500 text-white shadow-md shadow-orange-500/20'
+                        : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 border border-zinc-700'
+                    }`}
+                  >
+                    {n} {n === 1 ? 'persona' : 'pers.'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-3 bg-zinc-800/60 rounded-xl border border-zinc-700/60 flex items-center justify-between text-xs">
+              <span className="text-zinc-300">
+                Subtotal por hora ({numMiembros} × $35 MXN):
+              </span>
+              <span className="font-bold text-orange-400 text-sm">
+                ${numMiembros * precioPorPersona} MXN / h
+              </span>
+            </div>
+          </div>
+
+          {/* Paso 4: Disponibilidad en Tiempo Real */}
           <div className="bg-zinc-900/40 border border-zinc-800 p-5 rounded-2xl">
             {errorDisponibilidad && (
               <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs flex items-center gap-2">
@@ -212,16 +308,16 @@ export const BookingPage: React.FC = () => {
               </div>
 
               <div className="flex justify-between items-center">
-                <span className="text-zinc-400">Capacidad:</span>
-                <span className="text-zinc-200">
-                  {selectedSala?.capacidad || 6} músicos
+                <span className="text-zinc-400">Asistentes:</span>
+                <span className="text-white font-bold">
+                  {numMiembros} {numMiembros === 1 ? 'persona' : 'personas'}
                 </span>
               </div>
 
               <div className="flex justify-between items-center">
-                <span className="text-zinc-400">Tarifa por hora:</span>
+                <span className="text-zinc-400">Tarifa por persona:</span>
                 <span className="text-zinc-200 font-semibold">
-                  ${selectedSala?.precio_por_hora || 200} MXN
+                  ${precioPorPersona} MXN / persona
                 </span>
               </div>
 
@@ -247,11 +343,28 @@ export const BookingPage: React.FC = () => {
               <div className="border-t border-zinc-800 pt-3 flex justify-between items-baseline">
                 <div>
                   <span className="text-sm font-bold text-white block">Total a pagar:</span>
-                  <span className="text-[10px] text-zinc-500">Impuestos y equipo incluidos</span>
+                  <span className="text-[10px] text-zinc-500">
+                    {numMiembros} pers. × ${precioPorPersona} × {duration} h
+                  </span>
                 </div>
                 <span className="text-2xl font-black text-orange-400">${totalPrice} MXN</span>
               </div>
             </div>
+
+            {/* Aviso de autenticación */}
+            {isAuthenticated ? (
+              <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center gap-2">
+                <UserCheck className="w-4 h-4 shrink-0" />
+                <span className="truncate">
+                  Reservando como <strong>{user?.name || user?.nombre || user?.email}</strong>
+                </span>
+              </div>
+            ) : (
+              <div className="p-2.5 rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-300 text-xs flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-orange-400 shrink-0" />
+                <span>Se te pedirá iniciar sesión o crear tu cuenta antes de pagar.</span>
+              </div>
+            )}
 
             <button
               type="button"
@@ -265,7 +378,7 @@ export const BookingPage: React.FC = () => {
 
             <div className="text-[11px] text-zinc-500 text-center space-y-1">
               <p>✓ Validación en tiempo real contra solapamientos.</p>
-              <p>✓ Paga con tarjeta o transferencia SPEI.</p>
+              <p>✓ Paga con tarjeta o transferencia bancaria SPEI.</p>
             </div>
           </div>
         </div>
