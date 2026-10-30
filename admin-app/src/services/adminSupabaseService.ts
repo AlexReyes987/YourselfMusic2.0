@@ -251,13 +251,71 @@ export const adminSupabaseService = {
       );
     }
 
-    // 2. Normalizar usuario_id como entero (por defecto cliente general 2)
+    // 2. Buscar o crear usuario real en la tabla 'usuarios' para que quede plenamente identificado
     let usuarioId: number = 2;
-    if (typeof dto.usuario_id === 'number' && !isNaN(dto.usuario_id)) {
-      usuarioId = dto.usuario_id;
-    } else if (typeof dto.usuario_id === 'string') {
-      const parsed = parseInt(dto.usuario_id, 10);
-      if (!isNaN(parsed)) usuarioId = parsed;
+    try {
+      const emailClean = (dto.email_cliente || '').trim().toLowerCase();
+      const phoneClean = (dto.telefono_cliente || '').trim();
+
+      if (emailClean) {
+        // Buscar si ya existe por email
+        const { data: userByEmail } = await supabase
+          .from('usuarios')
+          .select('usuario_id')
+          .ilike('email', emailClean)
+          .maybeSingle();
+
+        if (userByEmail?.usuario_id) {
+          usuarioId = userByEmail.usuario_id;
+        } else {
+          // Registrar nuevo cliente en la tabla 'usuarios'
+          const { data: nuevoUser } = await supabase
+            .from('usuarios')
+            .insert({
+              role_id: 2,
+              nombre: dto.nombre_cliente,
+              email: emailClean,
+              telefono: phoneClean,
+              password_hash: 'ADMIN_MANUAL_REGISTRATION',
+            } as any)
+            .select('usuario_id')
+            .single();
+
+          if (nuevoUser?.usuario_id) {
+            usuarioId = nuevoUser.usuario_id;
+          }
+        }
+      } else if (dto.nombre_cliente) {
+        // Si no tiene correo, buscar por teléfono o crear con correo de recepción
+        const { data: userByPhone } = await supabase
+          .from('usuarios')
+          .select('usuario_id')
+          .eq('telefono', phoneClean)
+          .maybeSingle();
+
+        if (userByPhone?.usuario_id) {
+          usuarioId = userByPhone.usuario_id;
+        } else {
+          const autoEmail = `cliente_${Date.now()}@yourselfmusic.com`;
+          const { data: nuevoUser } = await supabase
+            .from('usuarios')
+            .insert({
+              role_id: 2,
+              nombre: dto.nombre_cliente,
+              email: autoEmail,
+              telefono: phoneClean,
+              password_hash: 'ADMIN_MANUAL_REGISTRATION',
+            } as any)
+            .select('usuario_id')
+            .single();
+
+          if (nuevoUser?.usuario_id) {
+            usuarioId = nuevoUser.usuario_id;
+          }
+        }
+      }
+    } catch (uErr) {
+      console.warn('Nota: Usando ID de usuario:', uErr);
     }
 
     // 3. Insertar reservación

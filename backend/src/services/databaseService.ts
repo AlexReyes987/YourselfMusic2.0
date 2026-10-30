@@ -352,14 +352,47 @@ export class DatabaseService {
     const montoTotal = dto.monto_total ?? montoCalculado;
 
     // Normalizar usuario_id como entero válido para la clave foránea en Supabase
-    let validUsuarioId: number = 2; // Usuario general por defecto
-    if (typeof dto.usuario_id === 'number' && !isNaN(dto.usuario_id)) {
+    let validUsuarioId: number | null = null;
+    if (typeof dto.usuario_id === 'number' && !isNaN(dto.usuario_id) && dto.usuario_id > 0) {
       validUsuarioId = dto.usuario_id;
     } else if (typeof dto.usuario_id === 'string') {
       const parsed = parseInt(dto.usuario_id, 10);
-      if (!isNaN(parsed)) {
+      if (!isNaN(parsed) && parsed > 0) {
         validUsuarioId = parsed;
       }
+    }
+
+    if (!validUsuarioId) {
+      throw {
+        status: 401,
+        message: 'Se requiere una cuenta de usuario registrada para realizar una reservación.',
+      };
+    }
+
+    // Verificar obligatoriamente que el usuario exista en la tabla 'usuarios'
+    let usuarioRealNombre = 'Cliente';
+    let usuarioRealEmail = '';
+    try {
+      const { data, error: userLookupError } = await supabase
+        .from('usuarios')
+        .select('usuario_id, nombre, email, telefono, role_id')
+        .eq('usuario_id', validUsuarioId as any)
+        .maybeSingle();
+
+      const usuarioReal = data as any;
+      if (userLookupError) {
+        console.warn('[DatabaseService] Error verificando usuario en Supabase:', userLookupError.message);
+      } else if (!usuarioReal) {
+        throw {
+          status: 401,
+          message: 'La cuenta de usuario no existe en la base de datos de YourSelf Music. Debes crear una cuenta antes de reservar.',
+        };
+      } else {
+        usuarioRealNombre = usuarioReal.nombre;
+        usuarioRealEmail = usuarioReal.email;
+      }
+    } catch (uErr: any) {
+      if (uErr.status) throw uErr;
     }
 
     // 5. Determinar estado inicial según método de pago (Business Rule #4)
@@ -460,7 +493,7 @@ export class DatabaseService {
     // 8. Registrar en auditoría
     await this.registrarAuditoria(
       validUsuarioId,
-      `CREAR_RESERVACION: Sala ${dto.sala_id} fecha ${dto.fecha_reservacion} (${dto.hora_inicio}-${dto.hora_fin}) Personas: ${numPersonas} Monto: $${montoTotal} Estado: ${estadoInicial}`,
+      `CREAR_RESERVACION: Cliente ${usuarioRealNombre} (${usuarioRealEmail}) Sala ${dto.sala_id} fecha ${dto.fecha_reservacion} (${dto.hora_inicio}-${dto.hora_fin}) Personas: ${numPersonas} Monto: ${montoTotal} Estado: ${estadoInicial}`,
       'reservaciones'
     );
 

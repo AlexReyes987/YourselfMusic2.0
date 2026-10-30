@@ -56,6 +56,7 @@ export const LoginPage: React.FC = () => {
     } catch (err: any) {
       const serverMessage =
         err.response?.data?.message ||
+        err.response?.data?.error?.message ||
         err.message ||
         'Error al iniciar sesión. Verifica tus credenciales.';
       setErrorMessage(serverMessage);

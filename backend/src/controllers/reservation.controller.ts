@@ -68,11 +68,11 @@ export class ReservationController {
       const usuarioId = req.user?.id ?? req.body.usuario_id ?? req.body.user_id;
       const numPersonas = req.body.num_personas ?? req.body.num_miembros;
 
-      // 1. Validaciones básicas en servidor
+      // 1. Validaciones básicas en servidor: Requiere cuenta registrada y autenticada
       if (!usuarioId) {
-        res.status(400).json({
+        res.status(401).json({
           success: false,
-          message: 'El identificador del usuario (usuario_id) es requerido o debe enviar token Bearer.',
+          message: 'Debes iniciar sesión con una cuenta de usuario registrada para realizar una reservación.',
         });
         return;
       }

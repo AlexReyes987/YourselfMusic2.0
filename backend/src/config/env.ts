@@ -15,6 +15,35 @@ dotenv.config({
   ],
 });
 
+function normalizeSupabaseUrl(rawUrl?: string): string {
+  if (!rawUrl) return '';
+  let url = rawUrl.trim();
+  if (url.includes('supabase.com/dashboard/project/')) {
+    const parts = url.split('/project/');
+    const projectRef = parts[1]?.replace(/\/.*$/, '').trim();
+    if (projectRef) {
+      return `https://${projectRef}.supabase.co`;
+    }
+  }
+  return url;
+}
+
+const rawSupabaseUrl =
+  process.env.SUPABASE_URL ||
+  process.env.VITE_SUPABASE_URL ||
+  'https://cfktwdarosdodquclcyi.supabase.co';
+
+const rawSupabaseAnonKey =
+  process.env.SUPABASE_ANON_KEY ||
+  process.env.VITE_SUPABASE_ANON_KEY ||
+  process.env.SUPABASE_KEY ||
+  '';
+
+const rawSupabaseServiceRoleKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.VITE_SUPABASE_SERVICE_ROLE_KEY ||
+  rawSupabaseAnonKey;
+
 export const ENV = {
   PORT: process.env.PORT ? parseInt(process.env.PORT, 10) : 4000,
   NODE_ENV: process.env.NODE_ENV || 'development',
@@ -26,12 +55,12 @@ export const ENV = {
     NAME: process.env.DB_NAME || 'yourself_music',
   },
   SUPABASE: {
-    URL: process.env.SUPABASE_URL || '',
-    ANON_KEY: process.env.SUPABASE_ANON_KEY || '',
-    SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+    URL: normalizeSupabaseUrl(rawSupabaseUrl),
+    ANON_KEY: rawSupabaseAnonKey,
+    SERVICE_ROLE_KEY: rawSupabaseServiceRoleKey,
   },
   JWT: {
-    SECRET: process.env.JWT_SECRET || 'default_jwt_secret',
+    SECRET: process.env.JWT_SECRET || 'super_secret_jwt_key_yourself_music_2026',
     EXPIRES_IN: process.env.JWT_EXPIRES_IN || '7d',
   },
   CORS: {

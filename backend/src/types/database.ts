@@ -25,7 +25,7 @@ export type RoleUpdate = Partial<RoleInsert>;
 
 // 2. usuarios
 export interface Usuario {
-  usuario_id: string; // UUID
+  usuario_id: number | string; // int4 en Supabase
   role_id: number;
   nombre: string;
   email: string;
@@ -34,7 +34,7 @@ export interface Usuario {
 }
 
 export type UsuarioInsert = {
-  usuario_id?: string;
+  usuario_id?: number | string;
   role_id: number;
   nombre: string;
   email: string;
@@ -94,8 +94,8 @@ export type EstadoReservacion =
   | string;
 
 export interface Reservacion {
-  reservacion_id: string; // UUID
-  usuario_id: string; // UUID
+  reservacion_id: number | string; // int4 en Supabase
+  usuario_id: number | string; // int4 FK a usuarios.usuario_id
   sala_id: number; // 1..4
   fecha_reservacion: string; // YYYY-MM-DD
   hora_inicio: string; // HH:00:00
@@ -105,8 +105,8 @@ export interface Reservacion {
 }
 
 export type ReservacionInsert = {
-  reservacion_id?: string;
-  usuario_id: string;
+  reservacion_id?: number | string;
+  usuario_id: number | string;
   sala_id: number;
   fecha_reservacion: string;
   hora_inicio: string;
@@ -120,8 +120,8 @@ export type ReservacionUpdate = Partial<ReservacionInsert>;
 export type MetodoPago = 'card' | 'transfer' | 'tarjeta' | 'transferencia' | string;
 
 export interface Pago {
-  pago_id: string; // UUID
-  reservacion_id: string; // UUID
+  pago_id: number | string; // int4 en Supabase
+  reservacion_id: number | string; // int4 FK a reservaciones.reservacion_id
   monto: number;
   concepto_pago: string;
   metodo_pago: MetodoPago;
@@ -130,8 +130,8 @@ export interface Pago {
 }
 
 export type PagoInsert = {
-  pago_id?: string;
-  reservacion_id: string;
+  pago_id?: number | string;
+  reservacion_id: number | string;
   monto: number;
   concepto_pago: string;
   metodo_pago: MetodoPago;
@@ -142,8 +142,8 @@ export type PagoUpdate = Partial<PagoInsert>;
 
 // 7. cancelaciones
 export interface Cancelacion {
-  cancelacion_id: string; // UUID
-  reservacion_id: string; // UUID
+  cancelacion_id: number | string; // int4 en Supabase
+  reservacion_id: number | string; // int4 FK a reservaciones.reservacion_id
   fecha_cancelacion: string; // ISO Timestamp
   tarifa_multa: number;
   es_mismo_dia: boolean;
@@ -151,8 +151,8 @@ export interface Cancelacion {
 }
 
 export type CancelacionInsert = {
-  cancelacion_id?: string;
-  reservacion_id: string;
+  cancelacion_id?: number | string;
+  reservacion_id: number | string;
   fecha_cancelacion?: string;
   tarifa_multa: number;
   es_mismo_dia: boolean;
@@ -162,16 +162,16 @@ export type CancelacionUpdate = Partial<CancelacionInsert>;
 
 // 8. auditoria
 export interface Auditoria {
-  auditoria_id: string | number;
-  usuario_id: string | null; // UUID
+  auditoria_id: number | string; // int4 en Supabase
+  usuario_id: number | string | null; // int4 FK a usuarios.usuario_id
   accion: string;
   tabla_afectada: string;
   fecha_hora: string; // ISO Timestamp
 }
 
 export type AuditoriaInsert = {
-  auditoria_id?: string | number;
-  usuario_id: string | null;
+  auditoria_id?: number | string;
+  usuario_id: number | string | null;
   accion: string;
   tabla_afectada: string;
   fecha_hora?: string;

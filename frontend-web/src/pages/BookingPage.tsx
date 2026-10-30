@@ -372,7 +372,7 @@ export const BookingPage: React.FC = () => {
               onClick={handleContinueToPayment}
               className="w-full py-3.5 bg-orange-500 hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20 transition-all cursor-pointer text-sm"
             >
-              <span>Continuar al Pago</span>
+              <span>{isAuthenticated ? 'Continuar al Pago y Confirmación' : 'Crear Cuenta / Ingresar para Reservar'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
 

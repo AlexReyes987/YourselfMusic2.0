@@ -146,22 +146,49 @@ export const PaymentPage: React.FC = () => {
           statusReservacion = response.reservacion.estado_reservacion || statusReservacion;
         }
 
-        // Limpiar reservación pendiente tras éxito
+        // Limpiar reservación pendiente tras éxito en base de datos
         try {
           sessionStorage.removeItem('pendingBooking');
         } catch {}
       } catch (apiErr: any) {
-        // Si el backend responde con error 409 (conflicto de solapamiento), mostramos mensaje estricto
-        if (apiErr.response?.status === 409) {
+        setIsProcessing(false);
+
+        // 1. Error 401: Usuario no autenticado o no encontrado en base de datos
+        if (apiErr.response?.status === 401) {
           setErrorMessage(
             apiErr.response.data?.message ||
-              'Conflicto: El horario seleccionado acaba de ser reservado por otro usuario. Por favor vuelve al catálogo y selecciona otro horario.'
+              'Debes iniciar sesión con una cuenta registrada para poder confirmar tu reservación.'
           );
-          setIsProcessing(false);
+          navigate('/login', {
+            state: {
+              from: '/payment',
+              bookingData,
+              message: 'Tu sesión ha expirado o no estás autenticado. Inicia sesión con tu cuenta de usuario para confirmar la cita.',
+            },
+          });
           return;
         }
 
-        console.warn('Backend API no disponible en este momento, simulando registro para demostración local:', apiErr);
+        // 2. Error 409: Conflicto de horario o solapamiento
+        if (apiErr.response?.status === 409) {
+          setErrorMessage(
+            apiErr.response.data?.message ||
+              'Conflicto: El horario seleccionado acaba de ser apartado por otro músico. Por favor regresa al catálogo y elige otro bloque de horas.'
+          );
+          return;
+        }
+
+        // 3. Otro error devuelto por la API del backend
+        if (apiErr.response?.data?.message) {
+          setErrorMessage(apiErr.response.data.message);
+          return;
+        }
+
+        // 4. Error de red o servidor no disponible
+        setErrorMessage(
+          'No se pudo conectar con el servidor de YourSelf Music. Asegúrate de que el backend esté ejecutándose en http://localhost:4000.'
+        );
+        return;
       }
 
       navigate('/confirmation', {

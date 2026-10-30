@@ -98,6 +98,7 @@ export const RegisterPage: React.FC = () => {
     } catch (err: any) {
       const serverMessage =
         err.response?.data?.message ||
+        err.response?.data?.error?.message ||
         err.message ||
         'Ocurrió un error al registrar la cuenta. Inténtalo nuevamente.';
       setErrorMessage(serverMessage);
