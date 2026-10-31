@@ -28,7 +28,7 @@ export const SettingsPage: React.FC = () => {
             <span>Reglas de Solapamiento y Cancelación</span>
           </div>
           <p className="text-xs text-zinc-400">
-            Bloques indivisibles por hora cerrada. Cero reservaciones coincidentes en la misma sala física.
+            Bloques indivisibles por hora cerrada. Cero reservaciones coincidentes en la misma sala física. En caso de querer hacer modificaciones o cancelaciones despues de haber hecho el pago, no hay devolución.
           </p>
         </div>
 
@@ -38,8 +38,11 @@ export const SettingsPage: React.FC = () => {
             <span>Ubicación y Datos de Contacto</span>
           </div>
           <p className="text-xs text-zinc-400">
-            YourSelf Music — Estudio de Ensayo Musical en Durango, Dgo., México.
+            YourSelf Music —  Ubicados en Av. Gral. Lázaro Cárdenas 305, Guillermina, 34270 Durango, Dgo.
           </p>
+            <p className="text-xs text-zinc-400">
+              Numero de contacto  —  618 113 3482
+            </p>
         </div>
       </div>
     </div>

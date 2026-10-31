@@ -23,7 +23,7 @@ export const Navbar: React.FC = () => {
             to="/"
             className="flex items-center gap-2 font-black text-xl tracking-tight text-white hover:text-orange-500 transition-colors"
           >
-            <Music className="w-6 h-6 text-orange-500" />
+            <img src="/logoyus.png" alt="Logo Yourself Music" className="h-8 w-auto" />
             <span>
               YourSelf <span className="text-orange-500">Music</span>
             </span>

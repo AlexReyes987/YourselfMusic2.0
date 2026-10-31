@@ -82,12 +82,9 @@ export const LoginPage: React.FC = () => {
         {/* Tarjeta de Inicio de Sesión */}
         <div className="bg-zinc-900/60 border border-zinc-800 rounded-3xl p-6 sm:p-8 backdrop-blur-xl shadow-2xl space-y-6">
           <div className="text-center space-y-2">
-            <div className="w-12 h-12 rounded-2xl bg-orange-500/10 border border-orange-500/20 text-orange-400 flex items-center justify-center mx-auto">
-              <Music className="w-6 h-6 text-orange-500" />
-            </div>
             <h2 className="text-2xl font-black text-white tracking-tight">Iniciar Sesión</h2>
             <p className="text-xs text-zinc-400">
-              Accede con tu cuenta oficial para gestionar tus reservaciones en las 4 salas de YourSelf Music.
+              Accede con tu cuenta para gestionar tus reservaciones en las 4 salas de YourSelf Music.
             </p>
           </div>
 

@@ -138,20 +138,35 @@ export const BookingPage: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8">
-      {/* Encabezado */}
-      <div>
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-500/10 border border-orange-500/30 text-orange-400 text-xs font-semibold mb-2">
-          <Sparkles className="w-3.5 h-3.5" />
-          <span>Plataforma Oficial de Reservaciones YourSelf Music</span>
-        </div>
-        <h1 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
-          Reserva tu Sala de Ensayo
-        </h1>
-        <p className="text-xs sm:text-sm text-zinc-400 mt-1 max-w-2xl">
-          Selecciona una de las 4 salas especializadas ($35 por persona/h, capacidad hasta 9 músicos),
-          especifica tus integrantes y asegura tu bloque de ensayo sin riesgo de solapamiento.
-        </p>
-      </div>
+        {/* Encabezado */}
+        {isAuthenticated ? (
+            <div>
+              <h1 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
+                Reserva tu Sala de Ensayo
+              </h1>
+              <p className="text-xs sm:text-sm text-zinc-400 mt-1 max-w-2xl">
+                Selecciona una de las 4 salas especializadas ($35 por persona/h, capacidad hasta 9 músicos),
+                especifica tus integrantes y asegura tu bloque de ensayo sin riesgo de solapamiento.
+              </p>
+            </div>
+        ): (
+          
+            <div>
+                <h1 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
+                  Reserva tu Sala de Ensayo
+                </h1>
+                <p className="text-xs sm:text-sm text-zinc-400 mt-1 max-w-2xl">
+                  Selecciona una de las 4 salas especializadas ($35 por persona/h, capacidad hasta 9 músicos),
+                  especifica tus integrantes y asegura tu bloque de ensayo sin riesgo de solapamiento.
+                </p>
+                <br></br>
+                <div className="p-2.5 rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-300 text-xs flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-orange-400 shrink-0" />
+                  <span>Se te pedirá iniciar sesión o crear tu cuenta antes de pagar.</span>
+                </div>
+            </div>
+        )}
+
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
         {/* Columna Principal: Selección de Sala, Fecha, Miembros y Horarios */}
@@ -362,7 +377,7 @@ export const BookingPage: React.FC = () => {
             ) : (
               <div className="p-2.5 rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-300 text-xs flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-orange-400 shrink-0" />
-                <span>Se te pedirá iniciar sesión o crear tu cuenta antes de pagar.</span>
+                <span>Recuerda iniciar sesión o crear tu cuenta antes de pagar.</span>
               </div>
             )}
 

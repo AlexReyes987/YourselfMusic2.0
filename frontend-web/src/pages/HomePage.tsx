@@ -23,11 +23,6 @@ export const HomePage: React.FC = () => {
     <div className="py-12 sm:py-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto space-y-20">
       {/* Hero Section */}
       <div className="text-center max-w-3xl mx-auto space-y-6">
-        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-orange-500/30 bg-orange-500/10 text-orange-400 text-xs font-semibold">
-          <Sparkles className="w-4 h-4" />
-          <span>Estudio de ensayo profesional en Durango, Dgo.</span>
-        </div>
-
         <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight text-white leading-tight">
           Enfócate en tu música, <br />
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-500">
