@@ -15,8 +15,13 @@ import {
   AlertCircle,
   Loader2,
   CheckCircle2,
+  Lock,
 } from 'lucide-react';
 import { reservationService } from '../services/reservationService';
+import {
+  paymentService,
+  detectarMarcaTarjetaPorBin,
+} from '../services/paymentService';
 import { useAuth } from '../context/AuthContext';
 
 export const PaymentPage: React.FC = () => {
@@ -24,20 +29,22 @@ export const PaymentPage: React.FC = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
 
-  const bookingData = location.state as {
-    salaId: number;
-    nombreSala: string;
-    descripcion: string;
-    precioPorHora: number;
-    capacidad: number;
-    fecha: string;
-    horaInicio: string;
-    horaFin: string;
-    startHour: number;
-    duration: number;
-    numMiembros?: number;
-    totalPrice: number;
-  } | undefined;
+  const bookingData = location.state as
+    | {
+        salaId: number;
+        nombreSala: string;
+        descripcion: string;
+        precioPorHora: number;
+        capacidad: number;
+        fecha: string;
+        horaInicio: string;
+        horaFin: string;
+        startHour: number;
+        duration: number;
+        numMiembros?: number;
+        totalPrice: number;
+      }
+    | undefined;
 
   // Si el usuario no está autenticado, redirigir a /login preservando los datos de la reserva
   useEffect(() => {
@@ -51,7 +58,8 @@ export const PaymentPage: React.FC = () => {
         state: {
           from: '/payment',
           bookingData,
-          message: 'Para registrar tu reservación oficial en YourSelf Music, primero debes iniciar sesión o crear tu cuenta.',
+          message:
+            'Para registrar tu reservación oficial en YourSelf Music, primero debes iniciar sesión o crear tu cuenta.',
         },
         replace: true,
       });
@@ -71,12 +79,47 @@ export const PaymentPage: React.FC = () => {
     }
   }, [user]);
 
-  // Método de pago (tarjeta o transferencia SPEI)
+  // Configuración de MercadoPago.js v2
+  const [mpPublicKey, setMpPublicKey] = useState<string>(
+    import.meta.env.VITE_MERCADOPAGO_PUBLIC_KEY || ''
+  );
+  const [mpSdkReady, setMpSdkReady] = useState<boolean>(false);
+
+  useEffect(() => {
+    let mounted = true;
+    async function initMercadoPago() {
+      try {
+        await paymentService.cargarSdkMercadoPago();
+        const cfg = await paymentService.obtenerPublicKey();
+        if (mounted) {
+          if (cfg.publicKey) {
+            setMpPublicKey(cfg.publicKey);
+          }
+          setMpSdkReady(true);
+        }
+      } catch (err) {
+        console.warn('[PaymentPage] Error cargando SDK de Mercado Pago:', err);
+      }
+    }
+    initMercadoPago();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Método de pago (tarjeta vía Mercado Pago o transferencia SPEI)
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'transfer'>('card');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingStep, setProcessingStep] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Datos simulados de tarjeta
+  /**
+   * Estado local de los campos de tarjeta.
+   * SEGURIDAD PCI-DSS: Estos campos son interceptados en el navegador únicamente para
+   * invocar `mp.createCardToken(...)` del SDK oficial MercadoPago.js v2 y obtener un
+   * token criptográfico de un solo uso. NUNCA se envían crudos a nuestro backend.
+   */
+  const [cardholderName, setCardholderName] = useState(user?.name || user?.nombre || '');
   const [cardNumber, setCardNumber] = useState('');
   const [cardExpiry, setCardExpiry] = useState('');
   const [cardCvc, setCardCvc] = useState('');
@@ -98,7 +141,61 @@ export const PaymentPage: React.FC = () => {
     );
   }
 
-  const numPersonas = bookingData.numMiembros && bookingData.numMiembros > 0 ? bookingData.numMiembros : 1;
+  const numPersonas =
+    bookingData.numMiembros && bookingData.numMiembros > 0 ? bookingData.numMiembros : 1;
+
+  const cleanCardDigits = cardNumber.replace(/\D/g, '');
+  const detectedBrand =
+    cleanCardDigits.length >= 1 ? detectarMarcaTarjetaPorBin(cleanCardDigits) : '';
+
+  const handleCardNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/\D/g, '').slice(0, 16);
+    const formatted = raw.replace(/(\d{4})(?=\d)/g, '$1 ');
+    setCardNumber(formatted);
+  };
+
+  const handleCardExpiryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/\D/g, '').slice(0, 4);
+    if (raw.length >= 3) {
+      setCardExpiry(`${raw.slice(0, 2)}/${raw.slice(2)}`);
+    } else {
+      setCardExpiry(raw);
+    }
+  };
+
+  const handleCardCvcChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/\D/g, '').slice(0, 4);
+    setCardCvc(raw);
+  };
+
+  /**
+   * Función que envía ÚNICAMENTE el token generado por MercadoPago.js,
+   * el monto a cobrar y el identificador de la reserva hacia nuestro servidor.
+   */
+  const enviarTokenPagoAlServidor = async (params: {
+    token: string;
+    monto: number;
+    reservacionId: string | number;
+    paymentMethodId: string;
+    paymentTypeId?: string;
+    issuerId?: string | number;
+    descripcion: string;
+  }) => {
+    return await paymentService.confirmarPagoConToken({
+      token: params.token,
+      monto: params.monto,
+      reservacion_id: params.reservacionId,
+      payment_method_id: params.paymentMethodId,
+      payment_type_id: params.paymentTypeId || 'credit_card',
+      issuer_id: params.issuerId,
+      installments: 1,
+      descripcion: params.descripcion,
+      payer: {
+        email: (user?.email || email).trim(),
+        first_name: (cardholderName || nombre).trim(),
+      },
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -113,14 +210,107 @@ export const PaymentPage: React.FC = () => {
         return;
       }
 
-      const transaccionId = paymentMethod === 'card'
-        ? `CARD-STRIPE-${Date.now()}`
-        : transferRef.trim() || `SPEI-${Date.now()}`;
+      const conceptoReserva = `Ensayo ${bookingData.nombreSala} (${bookingData.fecha} ${bookingData.horaInicio.slice(0, 5)}-${bookingData.horaFin.slice(0, 5)}) - ${numPersonas} integrantes`;
+
+      // ========================================================================
+      // FLUJO 1: PAGO REAL CON TARJETA DE CRÉDITO / DÉBITO (MERCADO PAGO API)
+      // ========================================================================
+      if (paymentMethod === 'card') {
+        const expiryParts = cardExpiry.split('/');
+        const expMonth = expiryParts[0] || '';
+        const expYear = expiryParts[1] || '';
+
+        // Paso 1: Interceptar datos en el navegador y generar Token Seguro con MercadoPago.js v2
+        setProcessingStep('Tokenizando tarjeta de forma segura con Mercado Pago...');
+        const tokenData = await paymentService.generarTokenTarjetaCliente(mpPublicKey, {
+          cardNumber,
+          cardholderName: cardholderName || nombre,
+          cardExpirationMonth: expMonth,
+          cardExpirationYear: expYear,
+          securityCode: cardCvc,
+        });
+
+        // SEGURIDAD EXPLICITA: Limpiar los datos sensibles de la tarjeta en el cliente
+        // antes de realizar cualquier llamada a nuestro backend.
+        setCardNumber('');
+        setCardExpiry('');
+        setCardCvc('');
+
+        // Paso 2: Crear la reservación en estado 'pending' en Supabase para obtener su reservacion_id
+        setProcessingStep('Apartando bloque de horario en Supabase...');
+        const resCreated = await reservationService.create({
+          usuario_id: usuarioId,
+          cliente_nombre: nombre,
+          cliente_email: user?.email || email,
+          cliente_telefono: telefono,
+          sala_id: bookingData.salaId,
+          fecha_reservacion: bookingData.fecha,
+          hora_inicio: bookingData.horaInicio,
+          hora_fin: bookingData.horaFin,
+          num_personas: numPersonas,
+          monto_total: bookingData.totalPrice,
+          estado_reservacion: 'pending',
+        } as any);
+
+        const reservacionId = resCreated?.reservacion?.reservacion_id;
+        if (!reservacionId) {
+          throw new Error('No se pudo obtener el identificador de la reservación en Supabase.');
+        }
+
+        // Paso 3: Enviar ÚNICAMENTE el token generado, el monto a cobrar y el reservacion_id al servidor
+        setProcessingStep('Procesando cargo real en Mercado Pago...');
+        const mpResult = await enviarTokenPagoAlServidor({
+          token: tokenData.token,
+          monto: bookingData.totalPrice,
+          reservacionId,
+          paymentMethodId: tokenData.payment_method_id,
+          paymentTypeId: tokenData.payment_type_id,
+          issuerId: tokenData.issuer_id,
+          descripcion: conceptoReserva,
+        });
+
+        try {
+          sessionStorage.removeItem('pendingBooking');
+        } catch {}
+
+        // Paso 4: Redirigir a la pantalla de confirmación y recibo de pago
+        navigate('/confirmation', {
+          state: {
+            folio: String(reservacionId),
+            transaccionId: mpResult?.recibo?.transaccion_id || `MP-${mpResult?.mp_payment_id}`,
+            roomName: bookingData.nombreSala,
+            date: bookingData.fecha,
+            hours: `${bookingData.horaInicio.slice(0, 5)} a ${bookingData.horaFin.slice(0, 5)}`,
+            numMiembros: numPersonas,
+            paymentMethod: 'card',
+            cardBrand: tokenData.payment_method_id.toUpperCase(),
+            lastFourDigits: mpResult?.recibo?.ultimos_cuatro || tokenData.last_four_digits,
+            totalPrice: bookingData.totalPrice,
+            status: mpResult?.recibo?.estado_reservacion || 'confirmed',
+            fechaPago: mpResult?.recibo?.fecha_pago || new Date().toISOString(),
+            mensajeConfirmacion:
+              mpResult?.mensaje ||
+              '¡Pago aprobado por Mercado Pago! Tu reservación ha sido actualizada automáticamente a Confirmada.',
+            cliente: {
+              nombre,
+              email: user?.email || email,
+              telefono,
+            },
+          },
+        });
+        return;
+      }
+
+      // ========================================================================
+      // FLUJO 2: PAGO POR TRANSFERENCIA BANCARIA SPEI
+      // ========================================================================
+      setProcessingStep('Registrando reservación y referencia SPEI en Supabase...');
+      const transaccionId = transferRef.trim() || `SPEI-${Date.now()}`;
 
       const payload = {
         usuario_id: usuarioId,
         cliente_nombre: nombre,
-        cliente_email: email,
+        cliente_email: user?.email || email,
         cliente_telefono: telefono,
         sala_id: bookingData.salaId,
         fecha_reservacion: bookingData.fecha,
@@ -129,89 +319,81 @@ export const PaymentPage: React.FC = () => {
         num_personas: numPersonas,
         monto_total: bookingData.totalPrice,
         pago: {
-          metodo_pago: paymentMethod,
+          metodo_pago: 'transfer' as const,
           monto: bookingData.totalPrice,
-          concepto_pago: `Ensayo ${bookingData.nombreSala} (${bookingData.fecha} ${bookingData.horaInicio.slice(0, 5)}-${bookingData.horaFin.slice(0, 5)}) - ${numPersonas} integrantes`,
+          concepto_pago: conceptoReserva,
           transaccion_id: transaccionId,
         },
       };
 
-      let folio = `YM-${Date.now().toString().slice(-6)}`;
-      let statusReservacion = paymentMethod === 'card' ? 'confirmed' : 'pending';
+      const response = await reservationService.create(payload as any);
+      const folio = String(
+        response?.reservacion?.reservacion_id || `YM-${Date.now().toString().slice(-6)}`
+      );
+      const statusReservacion = response?.reservacion?.estado_reservacion || 'pending';
 
       try {
-        const response = await reservationService.create(payload as any);
-        if (response?.reservacion) {
-          folio = String(response.reservacion.reservacion_id);
-          statusReservacion = response.reservacion.estado_reservacion || statusReservacion;
-        }
-
-        // Limpiar reservación pendiente tras éxito en base de datos
-        try {
-          sessionStorage.removeItem('pendingBooking');
-        } catch {}
-      } catch (apiErr: any) {
-        setIsProcessing(false);
-
-        // 1. Error 401: Usuario no autenticado o no encontrado en base de datos
-        if (apiErr.response?.status === 401) {
-          setErrorMessage(
-            apiErr.response.data?.message ||
-              'Debes iniciar sesión con una cuenta registrada para poder confirmar tu reservación.'
-          );
-          navigate('/login', {
-            state: {
-              from: '/payment',
-              bookingData,
-              message: 'Tu sesión ha expirado o no estás autenticado. Inicia sesión con tu cuenta de usuario para confirmar la cita.',
-            },
-          });
-          return;
-        }
-
-        // 2. Error 409: Conflicto de horario o solapamiento
-        if (apiErr.response?.status === 409) {
-          setErrorMessage(
-            apiErr.response.data?.message ||
-              'Conflicto: El horario seleccionado acaba de ser apartado por otro músico. Por favor regresa al catálogo y elige otro bloque de horas.'
-          );
-          return;
-        }
-
-        // 3. Otro error devuelto por la API del backend
-        if (apiErr.response?.data?.message) {
-          setErrorMessage(apiErr.response.data.message);
-          return;
-        }
-
-        // 4. Error de red o servidor no disponible
-        setErrorMessage(
-          'No se pudo conectar con el servidor de YourSelf Music. Asegúrate de que el backend esté ejecutándose en http://localhost:4000.'
-        );
-        return;
-      }
+        sessionStorage.removeItem('pendingBooking');
+      } catch {}
 
       navigate('/confirmation', {
         state: {
           folio,
+          transaccionId,
           roomName: bookingData.nombreSala,
           date: bookingData.fecha,
           hours: `${bookingData.horaInicio.slice(0, 5)} a ${bookingData.horaFin.slice(0, 5)}`,
           numMiembros: numPersonas,
-          paymentMethod,
+          paymentMethod: 'transfer',
           totalPrice: bookingData.totalPrice,
           status: statusReservacion,
+          fechaPago: new Date().toISOString(),
+          mensajeConfirmacion:
+            '¡Reservación registrada! Tu comprobante SPEI ha sido enviado para validación administrativa.',
           cliente: {
             nombre,
-            email,
+            email: user?.email || email,
             telefono,
           },
         },
       });
     } catch (err: any) {
-      setErrorMessage(err.message || 'Ocurrió un error al procesar la reservación y pago.');
+      if (err.response?.status === 401) {
+        setErrorMessage(
+          err.response.data?.message ||
+            'Debes iniciar sesión con una cuenta registrada para confirmar tu reservación.'
+        );
+        navigate('/login', {
+          state: {
+            from: '/payment',
+            bookingData,
+            message:
+              'Tu sesión ha expirado. Inicia sesión con tu cuenta para confirmar la cita.',
+          },
+        });
+        return;
+      }
+
+      if (err.response?.status === 409) {
+        setErrorMessage(
+          err.response.data?.message ||
+            'Conflicto: El horario seleccionado acaba de ser apartado por otro músico. Por favor elige otro horario.'
+        );
+        return;
+      }
+
+      const apiMsg =
+        err.response?.data?.message ||
+        (Array.isArray(err)
+          ? err.map((item: any) => item?.message || item?.description || JSON.stringify(item)).join('. ')
+          : undefined) ||
+        err.message ||
+        (typeof err === 'string' ? err : undefined) ||
+        'Ocurrió un error al procesar el pago con Mercado Pago.';
+      setErrorMessage(apiMsg);
     } finally {
       setIsProcessing(false);
+      setProcessingStep('');
     }
   };
 
@@ -228,10 +410,10 @@ export const PaymentPage: React.FC = () => {
 
       <div>
         <h1 className="text-2xl sm:text-3xl font-extrabold text-white">
-          Confirmación de Reserva y Pago
+          Confirmación de Reserva y Pago Seguro
         </h1>
         <p className="text-xs sm:text-sm text-zinc-400 mt-1">
-          Completa tus datos de contacto y selecciona tu método de pago preferido.
+          Procesa tu pago en línea con tarjeta de crédito o débito a través de Mercado Pago Checkout API.
         </p>
       </div>
 
@@ -253,7 +435,8 @@ export const PaymentPage: React.FC = () => {
             </span>
             <span className="flex items-center gap-1">
               <Clock className="w-3.5 h-3.5 text-orange-400" />
-              {bookingData.horaInicio.slice(0, 5)} - {bookingData.horaFin.slice(0, 5)} ({bookingData.duration} hrs)
+              {bookingData.horaInicio.slice(0, 5)} - {bookingData.horaFin.slice(0, 5)} (
+              {bookingData.duration} hrs)
             </span>
             <span className="text-zinc-500 font-mono text-[11px]">
               Tarifa: {numPersonas} pers. × $35 MXN × {bookingData.duration} h
@@ -271,7 +454,7 @@ export const PaymentPage: React.FC = () => {
         <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs sm:text-sm flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
           <div className="space-y-1">
-            <p className="font-bold">No fue posible completar la reserva</p>
+            <p className="font-bold">No fue posible procesar el pago</p>
             <p className="text-xs text-rose-300/90">{errorMessage}</p>
           </div>
         </div>
@@ -297,10 +480,12 @@ export const PaymentPage: React.FC = () => {
             <div className="p-3 bg-zinc-800/40 border border-zinc-700/60 rounded-xl text-xs text-zinc-300 flex items-center justify-between">
               <div className="space-y-0.5">
                 <p className="font-semibold text-white">
-                  Titular: <span className="text-orange-400">{user.name || user.nombre}</span>
+                  Titular: <span className="text-orange-400">{user.name || user.nombre}</span> (
+                  {user.email})
                 </p>
                 <p className="text-zinc-400 text-[11px]">
-                  Esta reservación quedará vinculada oficialmente a tu usuario en la tabla <code className="text-zinc-200">usuarios</code> de Supabase.
+                  Al confirmarse el pago en Mercado Pago, tu reservación cambiará automáticamente a{' '}
+                  <code className="text-emerald-400">confirmed</code> en Supabase.
                 </p>
               </div>
               <span className="text-[10px] bg-orange-500/10 text-orange-300 font-mono px-2.5 py-1 rounded-lg border border-orange-500/20">
@@ -312,22 +497,20 @@ export const PaymentPage: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2 space-y-1.5">
               <label className="text-xs font-semibold text-zinc-300">Nombre completo / Banda:</label>
-              <div className="relative">
-                <input
-                  type="text"
-                  required
-                  placeholder="Ej. Banda Los Alacranes / Carlos Mendoza"
-                  value={nombre}
-                  onChange={(e) => setNombre(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-zinc-800/80 border border-zinc-700 rounded-xl text-sm text-white focus:outline-none focus:border-orange-500"
-                />
-              </div>
+              <input
+                type="text"
+                required
+                placeholder="Ej. Banda Los Alacranes / Carlos Mendoza"
+                value={nombre}
+                onChange={(e) => setNombre(e.target.value)}
+                className="w-full px-4 py-2.5 bg-zinc-800/80 border border-zinc-700 rounded-xl text-sm text-white focus:outline-none focus:border-orange-500"
+              />
             </div>
 
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1">
                 <Mail className="w-3.5 h-3.5 text-zinc-400" />
-                <span>Correo Electrónico:</span>
+                <span>Correo Electrónico (para envío de recibo):</span>
               </label>
               <input
                 type="email"
@@ -358,9 +541,15 @@ export const PaymentPage: React.FC = () => {
 
         {/* Sección 2: Selección del Método de Pago */}
         <div className="bg-zinc-900/40 border border-zinc-800 p-6 rounded-2xl space-y-5">
-          <div className="flex items-center gap-2 text-sm font-bold text-white border-b border-zinc-800 pb-3">
-            <CreditCard className="w-4 h-4 text-orange-400" />
-            <span>2. Método de Pago (alimenta tabla 'pagos' en Supabase)</span>
+          <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+            <div className="flex items-center gap-2 text-sm font-bold text-white">
+              <CreditCard className="w-4 h-4 text-orange-400" />
+              <span>2. Pasarela de Pago (Mercado Pago Checkout API / SPEI)</span>
+            </div>
+            <span className="inline-flex items-center gap-1 text-[11px] text-sky-400 bg-sky-500/10 border border-sky-500/20 px-2.5 py-0.5 rounded-full font-semibold">
+              <Lock className="w-3 h-3" />
+              <span>MercadoPago.js v2 Activo</span>
+            </span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -375,9 +564,11 @@ export const PaymentPage: React.FC = () => {
             >
               <CreditCard className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
               <div>
-                <p className="text-sm font-bold text-white">Tarjeta de Crédito / Débito</p>
+                <p className="text-sm font-bold text-white">
+                  Tarjeta de Crédito / Débito (Mercado Pago)
+                </p>
                 <p className="text-xs text-zinc-400 mt-0.5">
-                  Confirmación inmediata en Supabase (estado 'confirmed').
+                  Cobro real tokenizado y confirmación automática inmediata en Supabase.
                 </p>
               </div>
             </button>
@@ -401,52 +592,134 @@ export const PaymentPage: React.FC = () => {
             </button>
           </div>
 
-          {/* Formulario de Tarjeta */}
+          {/* Formulario de Tarjeta Tokenizado con MercadoPago.js v2 */}
           {paymentMethod === 'card' ? (
             <div className="space-y-4 pt-2">
+              <div className="p-3 rounded-xl bg-zinc-800/50 border border-zinc-700/70 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[11px] font-semibold text-zinc-300">
+                    Tarjetas Oficiales de Prueba (Mercado Pago API de Orders México):
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCardholderName('APRO');
+                        setCardNumber('4075 5957 1648 3764');
+                        setCardExpiry('11/30');
+                        setCardCvc('123');
+                      }}
+                      className="text-[11px] px-2.5 py-1 rounded-lg bg-orange-500/15 hover:bg-orange-500/25 text-orange-300 border border-orange-500/30 font-semibold transition-colors cursor-pointer"
+                    >
+                      Usar Visa Crédito Prueba
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCardholderName('APRO');
+                        setCardNumber('5474 9254 3267 0366');
+                        setCardExpiry('11/30');
+                        setCardCvc('123');
+                      }}
+                      className="text-[11px] px-2.5 py-1 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/30 font-semibold transition-colors cursor-pointer"
+                    >
+                      Usar Mastercard Prueba
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCardholderName('APRO');
+                        setCardNumber('4189 1412 2126 7633');
+                        setCardExpiry('11/30');
+                        setCardCvc('123');
+                      }}
+                      className="text-[11px] px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 font-semibold transition-colors cursor-pointer"
+                    >
+                      Usar Visa Débito Prueba
+                    </button>
+                  </div>
+                </div>
+                <p className="text-[11px] text-zinc-400">
+                  En modo Sandbox de <strong>API de Orders</strong>, haz clic en cualquiera de los botones de arriba (o ingresa <code className="text-zinc-300">4075 5957 1648 3764</code>, Vencimiento <code className="text-zinc-300">11/30</code>, CVV <code className="text-zinc-300">123</code>, Titular <code className="text-zinc-300">APRO</code>).
+                </p>
+              </div>
+
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-zinc-300">Número de Tarjeta:</label>
+                <label className="text-xs font-semibold text-zinc-300">
+                  Nombre del Titular (como aparece en la tarjeta):
+                </label>
                 <input
                   type="text"
                   required
+                  placeholder="EJ. CARLOS MENDOZA"
+                  value={cardholderName}
+                  onChange={(e) => setCardholderName(e.target.value.toUpperCase())}
+                  className="w-full px-4 py-2.5 bg-zinc-800/80 border border-zinc-700 rounded-xl text-sm text-white uppercase focus:outline-none focus:border-orange-500"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-zinc-300">Número de Tarjeta:</label>
+                  {detectedBrand && (
+                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-orange-500/20 text-orange-300 border border-orange-500/30">
+                      {detectedBrand}
+                    </span>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  required
                   placeholder="4242 •••• •••• 4242"
                   value={cardNumber}
-                  onChange={(e) => setCardNumber(e.target.value)}
+                  onChange={handleCardNumberChange}
                   className="w-full px-4 py-2.5 bg-zinc-800/80 border border-zinc-700 rounded-xl text-sm text-white font-mono focus:outline-none focus:border-orange-500"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-zinc-300">Vencimiento:</label>
+                  <label className="text-xs font-semibold text-zinc-300">Vencimiento (MM/AA):</label>
                   <input
                     type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
                     required
                     placeholder="MM/AA"
                     maxLength={5}
                     value={cardExpiry}
-                    onChange={(e) => setCardExpiry(e.target.value)}
+                    onChange={handleCardExpiryChange}
                     className="w-full px-4 py-2.5 bg-zinc-800/80 border border-zinc-700 rounded-xl text-sm text-white font-mono focus:outline-none focus:border-orange-500"
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-zinc-300">CVC / CVV:</label>
+                  <label className="text-xs font-semibold text-zinc-300">
+                    Código de Seguridad (CVV/CVC):
+                  </label>
                   <input
                     type="password"
+                    inputMode="numeric"
+                    autoComplete="off"
                     required
                     placeholder="•••"
                     maxLength={4}
                     value={cardCvc}
-                    onChange={(e) => setCardCvc(e.target.value)}
+                    onChange={handleCardCvcChange}
                     className="w-full px-4 py-2.5 bg-zinc-800/80 border border-zinc-700 rounded-xl text-sm text-white font-mono focus:outline-none focus:border-orange-500"
                   />
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 text-[11px] text-zinc-500 pt-1">
-                <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                <span>Transacción encriptada con cifrado SSL de 256 bits y registro en Supabase.</span>
+              <div className="p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/20 flex items-start gap-2.5 text-[11px] text-zinc-400">
+                <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                <span>
+                  <strong className="text-emerald-300">Protección PCI-DSS con Mercado Pago:</strong>{' '}
+                  Los datos sensibles de tu tarjeta se convierten en un token criptográfico directamente en tu navegador mediante{' '}
+                  <code className="text-zinc-300">MercadoPago.js v2</code> y jamás viajan crudos hacia nuestro servidor.
+                </span>
               </div>
             </div>
           ) : (
@@ -494,18 +767,21 @@ export const PaymentPage: React.FC = () => {
         {/* Botón de Confirmación y Procesamiento */}
         <button
           type="submit"
-          disabled={isProcessing}
+          disabled={isProcessing || (paymentMethod === 'card' && !mpSdkReady)}
           className="w-full py-4 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-xl shadow-orange-500/20 transition-all text-base cursor-pointer"
         >
           {isProcessing ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
-              <span>Validando disponibilidad e insertando en Supabase...</span>
+              <span>{processingStep || 'Procesando pago seguro con Mercado Pago...'}</span>
             </>
           ) : (
             <>
               <CheckCircle2 className="w-5 h-5" />
-              <span>Confirmar y Pagar ${bookingData.totalPrice} MXN ({numPersonas} integrantes)</span>
+              <span>
+                Confirmar y Pagar ${bookingData.totalPrice} MXN ({numPersonas}{' '}
+                {numPersonas === 1 ? 'integrante' : 'integrantes'})
+              </span>
             </>
           )}
         </button>

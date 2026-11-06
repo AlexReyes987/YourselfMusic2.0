@@ -12,6 +12,8 @@ dotenv.config({
     path.resolve(process.cwd(), '.env'),
     path.resolve(__dirname, '../../.env.local'),
     path.resolve(__dirname, '../../.env'),
+    path.resolve(__dirname, '../../../.env.local'),
+    path.resolve(__dirname, '../../../.env'),
   ],
 });
 
@@ -58,6 +60,24 @@ export const ENV = {
     URL: normalizeSupabaseUrl(rawSupabaseUrl),
     ANON_KEY: rawSupabaseAnonKey,
     SERVICE_ROLE_KEY: rawSupabaseServiceRoleKey,
+  },
+  MERCADOPAGO: {
+    // Public Key (usada en el cliente para tokenizar tarjetas con MercadoPago.js v2)
+    PUBLIC_KEY:
+      process.env.MERCADOPAGO_PUBLIC_KEY ||
+      process.env.VITE_MERCADOPAGO_PUBLIC_KEY ||
+      '',
+    // Access Token (usado ESTRICTAMENTE en el servidor para crear cobros y consultar pagos)
+    ACCESS_TOKEN: process.env.MERCADOPAGO_ACCESS_TOKEN || '',
+    // Clave secreta del Webhook de Mercado Pago para verificar firma criptográfica x-signature
+    WEBHOOK_SECRET: process.env.MERCADOPAGO_WEBHOOK_SECRET || '',
+  },
+  SMTP: {
+    HOST: process.env.SMTP_HOST || 'smtp.gmail.com',
+    PORT: process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587,
+    USER: process.env.SMTP_USER || '',
+    PASS: process.env.SMTP_PASS || '',
+    FROM: process.env.SMTP_FROM || 'YourSelf Music <yourself@gmail.com>',
   },
   JWT: {
     SECRET: process.env.JWT_SECRET || 'super_secret_jwt_key_yourself_music_2026',

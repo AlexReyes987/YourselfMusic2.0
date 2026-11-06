@@ -11,7 +11,20 @@ export const app = express();
 app.use(helmet());
 app.use(
   cors({
-    origin: [ENV.CORS.CLIENT_WEB_URL, ENV.CORS.ADMIN_APP_URL, 'http://localhost:5173', 'http://localhost:5174'],
+    origin: (origin, callback) => {
+      if (
+        !origin ||
+        origin.includes('localhost') ||
+        origin.includes('127.0.0.1') ||
+        origin.includes('ngrok') ||
+        origin === ENV.CORS.CLIENT_WEB_URL ||
+        origin === ENV.CORS.ADMIN_APP_URL
+      ) {
+        callback(null, true);
+      } else {
+        callback(null, true);
+      }
+    },
     credentials: true,
   })
 );

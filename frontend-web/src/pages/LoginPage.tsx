@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Music, Mail, Lock, LogIn, AlertCircle, Sparkles, ArrowRight, Loader2 } from 'lucide-react';
+import { Mail, Lock, LogIn, AlertCircle, Sparkles, ArrowRight, Loader2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/authService';
 

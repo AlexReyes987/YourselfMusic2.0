@@ -9,6 +9,8 @@
     "admin-app"
   ],
   "scripts": {
+    "dev": "concurrently -n \"BACKEND,WEB\" -c \"blue,magenta\" \"npm run dev:backend\" \"npm run dev:web\"",
+    "start": "npm run dev",
     "dev:backend": "npm --workspace=backend run dev",
     "dev:web": "npm --workspace=frontend-web run dev",
     "dev:admin": "npm --workspace=admin-app run dev",
@@ -26,6 +28,8 @@
     "electron"
   ],
   "author": "YourSelf Music",
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
 }
-

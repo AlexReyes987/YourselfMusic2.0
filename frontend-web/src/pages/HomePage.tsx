@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarCheck, ShieldCheck, Zap, Sparkles, ArrowRight, Volume2, Users } from 'lucide-react';
+import { CalendarCheck, ShieldCheck, Zap, ArrowRight, Volume2, Users } from 'lucide-react';
 import { Sala } from '../types';
 import { roomService } from '../services/roomService';
 

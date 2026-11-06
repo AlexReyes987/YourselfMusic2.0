@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Music, Calendar, User, LogIn, LogOut, UserPlus } from 'lucide-react';
+import { Calendar, User, LogIn, LogOut, UserPlus, Shield } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export const Navbar: React.FC = () => {
@@ -41,6 +41,15 @@ export const Navbar: React.FC = () => {
 
             {isAuthenticated ? (
               <>
+                {user?.role === 'admin' && (
+                  <Link
+                    to="/admin"
+                    className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-orange-400 hover:text-orange-300 transition-colors bg-orange-500/10 px-2.5 py-1.5 rounded-lg border border-orange-500/20"
+                  >
+                    <Shield className="w-4 h-4" />
+                    <span>Panel Admin</span>
+                  </Link>
+                )}
                 <Link
                   to="/my-reservations"
                   className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-zinc-300 hover:text-white transition-colors"
