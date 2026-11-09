@@ -6,7 +6,7 @@ export const AdminHeader: React.FC<{ title: string }> = ({ title }) => {
   const { user } = useAuth();
 
   return (
-    <header className="h-16 border-b border-[#2a3142] bg-[#181b24]/90 backdrop-blur px-6 flex items-center justify-between shrink-0">
+    <header className="h-16 border-b border-zinc-800 bg-[#121215]/90 backdrop-blur px-6 flex items-center justify-between shrink-0">
       <h1 className="text-lg font-bold text-white">{title}</h1>
 
       <div className="flex items-center gap-4">

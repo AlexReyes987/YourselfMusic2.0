@@ -64,7 +64,7 @@ export const AdminDashboardPage: React.FC = () => {
         <div className="flex items-center gap-3">
           <Link
             to="/admin/calendar"
-            className="px-3.5 py-2 rounded-xl bg-[#181b24] hover:bg-zinc-800 border border-[#2a3142] text-zinc-300 hover:text-white text-xs font-medium flex items-center gap-1.5 transition-colors"
+            className="px-3.5 py-2 rounded-xl bg-[#141417] hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white text-xs font-medium flex items-center gap-1.5 transition-colors"
           >
             <Calendar className="w-4 h-4 text-orange-400" />
             <span>Ver Matriz de Ocupación</span>
@@ -81,7 +81,7 @@ export const AdminDashboardPage: React.FC = () => {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="p-5 rounded-2xl bg-[#181b24] border border-[#2a3142] space-y-2">
+        <div className="p-5 rounded-2xl bg-[#141417] border border-zinc-800 space-y-2">
           <div className="flex items-center justify-between text-zinc-400">
             <span className="text-xs font-semibold">Reservas Hoy</span>
             <Calendar className="w-4 h-4 text-orange-400" />
@@ -90,7 +90,7 @@ export const AdminDashboardPage: React.FC = () => {
           <p className="text-[11px] text-zinc-500">4 salas físicas activas</p>
         </div>
 
-        <div className="p-5 rounded-2xl bg-[#181b24] border border-[#2a3142] space-y-2">
+        <div className="p-5 rounded-2xl bg-[#141417] border border-zinc-800 space-y-2">
           <div className="flex items-center justify-between text-zinc-400">
             <span className="text-xs font-semibold">Ingresos del Día</span>
             <DollarSign className="w-4 h-4 text-emerald-400" />
@@ -99,7 +99,7 @@ export const AdminDashboardPage: React.FC = () => {
           <p className="text-[11px] text-emerald-400">Confirmadas hoy</p>
         </div>
 
-        <div className="p-5 rounded-2xl bg-[#181b24] border border-[#2a3142] space-y-2">
+        <div className="p-5 rounded-2xl bg-[#141417] border border-zinc-800 space-y-2">
           <div className="flex items-center justify-between text-zinc-400">
             <span className="text-xs font-semibold">Transferencias por Validar</span>
             <CheckCircle className="w-4 h-4 text-amber-400" />
@@ -110,7 +110,7 @@ export const AdminDashboardPage: React.FC = () => {
           </Link>
         </div>
 
-        <div className="p-5 rounded-2xl bg-[#181b24] border border-[#2a3142] space-y-2">
+        <div className="p-5 rounded-2xl bg-[#141417] border border-zinc-800 space-y-2">
           <div className="flex items-center justify-between text-zinc-400">
             <span className="text-xs font-semibold">Ocupación Hoy</span>
             <Layers className="w-4 h-4 text-blue-400" />
@@ -121,7 +121,7 @@ export const AdminDashboardPage: React.FC = () => {
       </div>
 
       {/* Lista de Reservaciones de Hoy */}
-      <div className="p-6 rounded-2xl bg-[#181b24] border border-[#2a3142] space-y-4 shadow-xl">
+      <div className="p-6 rounded-2xl bg-[#141417] border border-zinc-800 space-y-4 shadow-xl">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
@@ -144,7 +144,7 @@ export const AdminDashboardPage: React.FC = () => {
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="bg-[#1f2430] border-b border-[#2a3142] text-zinc-400 font-semibold">
+              <tr className="bg-[#1b1b20] border-b border-zinc-800 text-zinc-400 font-semibold">
                 <th className="p-3">Horario</th>
                 <th className="p-3">Sala</th>
                 <th className="p-3">Cliente / Banda</th>
@@ -153,7 +153,7 @@ export const AdminDashboardPage: React.FC = () => {
                 <th className="p-3 text-center">Estado</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#2a3142]/60">
+            <tbody className="divide-y divide-zinc-800/60">
               {loading ? (
                 <tr>
                   <td colSpan={6} className="p-6 text-center text-zinc-400">

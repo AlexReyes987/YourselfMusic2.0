@@ -1,23 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import {
-  CreditCard,
-  Building2,
-  ShieldCheck,
-  ArrowLeft,
-  Calendar,
-  Clock,
-  Volume2,
-  User,
-  Users,
-  Mail,
-  Phone,
-  AlertCircle,
-  Loader2,
-  CheckCircle2,
-  Lock,
-} from 'lucide-react';
-import { reservationService } from '../services/reservationService';
+import { Loader2, X } from 'lucide-react';
+import { reservationService, MULTA_CANCELACION_MXN } from '../services/reservationService';
 import {
   paymentService,
   detectarMarcaTarjetaPorBin,
@@ -46,7 +30,6 @@ export const PaymentPage: React.FC = () => {
       }
     | undefined;
 
-  // Si el usuario no está autenticado, redirigir a /login preservando los datos de la reserva
   useEffect(() => {
     if (!isAuthenticated) {
       if (bookingData) {
@@ -58,15 +41,13 @@ export const PaymentPage: React.FC = () => {
         state: {
           from: '/payment',
           bookingData,
-          message:
-            'Para registrar tu reservación oficial en YourSelf Music, primero debes iniciar sesión o crear tu cuenta.',
+          message: 'Inicia sesión o crea tu cuenta para continuar con tu reservación.',
         },
         replace: true,
       });
     }
   }, [isAuthenticated, bookingData, navigate]);
 
-  // Estado del formulario del cliente (sincronizado con el usuario autenticado)
   const [nombre, setNombre] = useState(user?.name || user?.nombre || '');
   const [email, setEmail] = useState(user?.email || '');
   const [telefono, setTelefono] = useState(user?.phone || user?.telefono || '');
@@ -79,7 +60,6 @@ export const PaymentPage: React.FC = () => {
     }
   }, [user]);
 
-  // Configuración de MercadoPago.js v2
   const [mpPublicKey, setMpPublicKey] = useState<string>(
     import.meta.env.VITE_MERCADOPAGO_PUBLIC_KEY || ''
   );
@@ -107,35 +87,47 @@ export const PaymentPage: React.FC = () => {
     };
   }, []);
 
-  // Método de pago (tarjeta vía Mercado Pago o transferencia SPEI)
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'transfer'>('card');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  /**
-   * Estado local de los campos de tarjeta.
-   * SEGURIDAD PCI-DSS: Estos campos son interceptados en el navegador únicamente para
-   * invocar `mp.createCardToken(...)` del SDK oficial MercadoPago.js v2 y obtener un
-   * token criptográfico de un solo uso. NUNCA se envían crudos a nuestro backend.
-   */
+  const [showPolicyModal, setShowPolicyModal] = useState<boolean>(false);
+  const [adeudoActivo, setAdeudoActivo] = useState<number>(0);
+
+  useEffect(() => {
+    let mounted = true;
+    async function checkAdeudo() {
+      if (!isAuthenticated) return;
+      try {
+        const data = await reservationService.getMiAdeudo();
+        if (mounted && data?.total_adeudo > 0) {
+          setAdeudoActivo(data.total_adeudo);
+        }
+      } catch {}
+    }
+    checkAdeudo();
+    return () => {
+      mounted = false;
+    };
+  }, [isAuthenticated]);
+
   const [cardholderName, setCardholderName] = useState(user?.name || user?.nombre || '');
   const [cardNumber, setCardNumber] = useState('');
   const [cardExpiry, setCardExpiry] = useState('');
   const [cardCvc, setCardCvc] = useState('');
 
-  // Datos de transferencia bancaria
   const [transferRef, setTransferRef] = useState('');
 
   if (!bookingData) {
     return (
       <div className="max-w-md mx-auto py-20 px-4 text-center space-y-4">
-        <p className="text-zinc-400">No hay información de reserva activa.</p>
+        <p className="text-zinc-400">No hay información de reservación activa.</p>
         <button
           onClick={() => navigate('/booking')}
           className="px-5 py-2.5 bg-orange-500 hover:bg-orange-600 rounded-xl text-white font-semibold text-sm transition-colors"
         >
-          Ir a Selección de Sala
+          Seleccionar sala
         </button>
       </div>
     );
@@ -168,10 +160,6 @@ export const PaymentPage: React.FC = () => {
     setCardCvc(raw);
   };
 
-  /**
-   * Función que envía ÚNICAMENTE el token generado por MercadoPago.js,
-   * el monto a cobrar y el identificador de la reserva hacia nuestro servidor.
-   */
   const enviarTokenPagoAlServidor = async (params: {
     token: string;
     monto: number;
@@ -197,31 +185,61 @@ export const PaymentPage: React.FC = () => {
     });
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMessage(null);
+
+    const usuarioId = user?.id || user?.usuario_id;
+    if (!usuarioId) {
+      setErrorMessage('Debes iniciar sesión para confirmar tu reservación.');
+      return;
+    }
+
+    if (paymentMethod === 'card') {
+      const cleanNum = cardNumber.replace(/\D/g, '');
+      if (cleanNum.length < 15 || cleanNum.length > 16) {
+        setErrorMessage('Ingresa un número de tarjeta válido (15 o 16 dígitos).');
+        return;
+      }
+      if (!cardExpiry.includes('/') || cardExpiry.length < 4) {
+        setErrorMessage('Ingresa una fecha de vencimiento válida (MM/AA).');
+        return;
+      }
+      if (cardCvc.replace(/\D/g, '').length < 3) {
+        setErrorMessage('Ingresa el código de seguridad (CVV/CVC) de tu tarjeta.');
+        return;
+      }
+    } else {
+      if (!transferRef.trim()) {
+        setErrorMessage('Ingresa el número o clave de rastreo SPEI para registrar tu pago.');
+        return;
+      }
+    }
+
+    setShowPolicyModal(true);
+  };
+
+  const ejecutarPagoConfirmado = async () => {
+    setShowPolicyModal(false);
     setIsProcessing(true);
     setErrorMessage(null);
 
     try {
       const usuarioId = user?.id || user?.usuario_id;
       if (!usuarioId) {
-        setErrorMessage('Debes haber iniciado sesión para confirmar la reservación.');
+        setErrorMessage('Debes iniciar sesión para confirmar tu reservación.');
         setIsProcessing(false);
         return;
       }
 
       const conceptoReserva = `Ensayo ${bookingData.nombreSala} (${bookingData.fecha} ${bookingData.horaInicio.slice(0, 5)}-${bookingData.horaFin.slice(0, 5)}) - ${numPersonas} integrantes`;
 
-      // ========================================================================
-      // FLUJO 1: PAGO REAL CON TARJETA DE CRÉDITO / DÉBITO (MERCADO PAGO API)
-      // ========================================================================
       if (paymentMethod === 'card') {
         const expiryParts = cardExpiry.split('/');
         const expMonth = expiryParts[0] || '';
         const expYear = expiryParts[1] || '';
 
-        // Paso 1: Interceptar datos en el navegador y generar Token Seguro con MercadoPago.js v2
-        setProcessingStep('Tokenizando tarjeta de forma segura con Mercado Pago...');
+        setProcessingStep('Verificando datos de pago...');
         const tokenData = await paymentService.generarTokenTarjetaCliente(mpPublicKey, {
           cardNumber,
           cardholderName: cardholderName || nombre,
@@ -230,14 +248,11 @@ export const PaymentPage: React.FC = () => {
           securityCode: cardCvc,
         });
 
-        // SEGURIDAD EXPLICITA: Limpiar los datos sensibles de la tarjeta en el cliente
-        // antes de realizar cualquier llamada a nuestro backend.
         setCardNumber('');
         setCardExpiry('');
         setCardCvc('');
 
-        // Paso 2: Crear la reservación en estado 'pending' en Supabase para obtener su reservacion_id
-        setProcessingStep('Apartando bloque de horario en Supabase...');
+        setProcessingStep('Registrando reservación...');
         const resCreated = await reservationService.create({
           usuario_id: usuarioId,
           cliente_nombre: nombre,
@@ -254,11 +269,10 @@ export const PaymentPage: React.FC = () => {
 
         const reservacionId = resCreated?.reservacion?.reservacion_id;
         if (!reservacionId) {
-          throw new Error('No se pudo obtener el identificador de la reservación en Supabase.');
+          throw new Error('No se pudo obtener el folio de la reservación.');
         }
 
-        // Paso 3: Enviar ÚNICAMENTE el token generado, el monto a cobrar y el reservacion_id al servidor
-        setProcessingStep('Procesando cargo real en Mercado Pago...');
+        setProcessingStep('Procesando pago...');
         const mpResult = await enviarTokenPagoAlServidor({
           token: tokenData.token,
           monto: bookingData.totalPrice,
@@ -273,7 +287,6 @@ export const PaymentPage: React.FC = () => {
           sessionStorage.removeItem('pendingBooking');
         } catch {}
 
-        // Paso 4: Redirigir a la pantalla de confirmación y recibo de pago
         navigate('/confirmation', {
           state: {
             folio: String(reservacionId),
@@ -290,7 +303,7 @@ export const PaymentPage: React.FC = () => {
             fechaPago: mpResult?.recibo?.fecha_pago || new Date().toISOString(),
             mensajeConfirmacion:
               mpResult?.mensaje ||
-              '¡Pago aprobado por Mercado Pago! Tu reservación ha sido actualizada automáticamente a Confirmada.',
+              'Tu pago ha sido aprobado y tu reservación está confirmada.',
             cliente: {
               nombre,
               email: user?.email || email,
@@ -301,10 +314,7 @@ export const PaymentPage: React.FC = () => {
         return;
       }
 
-      // ========================================================================
-      // FLUJO 2: PAGO POR TRANSFERENCIA BANCARIA SPEI
-      // ========================================================================
-      setProcessingStep('Registrando reservación y referencia SPEI en Supabase...');
+      setProcessingStep('Registrando reservación...');
       const transaccionId = transferRef.trim() || `SPEI-${Date.now()}`;
 
       const payload = {
@@ -349,7 +359,7 @@ export const PaymentPage: React.FC = () => {
           status: statusReservacion,
           fechaPago: new Date().toISOString(),
           mensajeConfirmacion:
-            '¡Reservación registrada! Tu comprobante SPEI ha sido enviado para validación administrativa.',
+            'Tu reservación ha sido registrada y tu comprobante está en revisión.',
           cliente: {
             nombre,
             email: user?.email || email,
@@ -361,14 +371,13 @@ export const PaymentPage: React.FC = () => {
       if (err.response?.status === 401) {
         setErrorMessage(
           err.response.data?.message ||
-            'Debes iniciar sesión con una cuenta registrada para confirmar tu reservación.'
+            'Debes iniciar sesión para confirmar tu reservación.'
         );
         navigate('/login', {
           state: {
             from: '/payment',
             bookingData,
-            message:
-              'Tu sesión ha expirado. Inicia sesión con tu cuenta para confirmar la cita.',
+            message: 'Tu sesión ha expirado. Inicia sesión nuevamente para continuar.',
           },
         });
         return;
@@ -377,7 +386,7 @@ export const PaymentPage: React.FC = () => {
       if (err.response?.status === 409) {
         setErrorMessage(
           err.response.data?.message ||
-            'Conflicto: El horario seleccionado acaba de ser apartado por otro músico. Por favor elige otro horario.'
+            'El horario seleccionado acaba de ser reservado. Por favor elige otro horario.'
         );
         return;
       }
@@ -389,7 +398,7 @@ export const PaymentPage: React.FC = () => {
           : undefined) ||
         err.message ||
         (typeof err === 'string' ? err : undefined) ||
-        'Ocurrió un error al procesar el pago con Mercado Pago.';
+        'No fue posible procesar el pago. Verifica los datos de tu tarjeta e inténtalo de nuevo.';
       setErrorMessage(apiMsg);
     } finally {
       setIsProcessing(false);
@@ -402,105 +411,72 @@ export const PaymentPage: React.FC = () => {
       <button
         type="button"
         onClick={() => navigate(-1)}
-        className="inline-flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white transition-colors cursor-pointer"
+        className="text-xs text-zinc-400 hover:text-white transition-colors cursor-pointer"
       >
-        <ArrowLeft className="w-4 h-4" />
-        <span>Modificar sala u horario</span>
+        ← Volver a la selección de sala
       </button>
 
       <div>
         <h1 className="text-2xl sm:text-3xl font-extrabold text-white">
-          Confirmación de Reserva y Pago Seguro
+          Confirmar y pagar
         </h1>
         <p className="text-xs sm:text-sm text-zinc-400 mt-1">
-          Procesa tu pago en línea con tarjeta de crédito o débito a través de Mercado Pago Checkout API.
+          Revisa los detalles de tu ensayo y completa tu pago para confirmar la reservación.
         </p>
       </div>
 
-      {/* Banner de resumen de la cita */}
+      {/* Resumen de la cita */}
       <div className="bg-zinc-900/60 border border-zinc-800 p-5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-1.5">
-          <div className="flex items-center gap-2">
-            <Volume2 className="w-4 h-4 text-orange-400" />
+          <div className="flex items-center gap-2.5">
             <h2 className="text-base font-bold text-white">{bookingData.nombreSala}</h2>
-            <span className="text-xs text-orange-400 font-semibold flex items-center gap-1 bg-orange-500/10 px-2 py-0.5 rounded-full border border-orange-500/20">
-              <Users className="w-3 h-3" />
+            <span className="text-xs text-zinc-300 bg-zinc-800 px-2.5 py-0.5 rounded-full border border-zinc-700">
               {numPersonas} {numPersonas === 1 ? 'músico' : 'músicos'}
             </span>
           </div>
-          <div className="flex flex-wrap items-center gap-4 text-xs text-zinc-400">
-            <span className="flex items-center gap-1">
-              <Calendar className="w-3.5 h-3.5 text-orange-400" />
-              {bookingData.fecha}
+          <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-400">
+            <span>Fecha: {bookingData.fecha}</span>
+            <span>•</span>
+            <span>
+              Horario: {bookingData.horaInicio.slice(0, 5)} - {bookingData.horaFin.slice(0, 5)} (
+              {bookingData.duration} {bookingData.duration === 1 ? 'hora' : 'horas'})
             </span>
-            <span className="flex items-center gap-1">
-              <Clock className="w-3.5 h-3.5 text-orange-400" />
-              {bookingData.horaInicio.slice(0, 5)} - {bookingData.horaFin.slice(0, 5)} (
-              {bookingData.duration} hrs)
-            </span>
-            <span className="text-zinc-500 font-mono text-[11px]">
-              Tarifa: {numPersonas} pers. × $35 MXN × {bookingData.duration} h
+            <span>•</span>
+            <span className="text-zinc-500">
+              {numPersonas} pers. × $35 MXN × {bookingData.duration} h
             </span>
           </div>
         </div>
 
         <div className="sm:text-right border-t sm:border-t-0 pt-3 sm:pt-0 border-zinc-800">
-          <span className="text-xs text-zinc-400 block">Total a Liquidar:</span>
-          <span className="text-2xl font-black text-orange-400">${bookingData.totalPrice} MXN</span>
+          <span className="text-xs text-zinc-400 block">Total a pagar</span>
+          <span className="text-2xl font-black text-white">${bookingData.totalPrice} MXN</span>
         </div>
       </div>
 
       {errorMessage && (
-        <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs sm:text-sm flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <p className="font-bold">No fue posible procesar el pago</p>
-            <p className="text-xs text-rose-300/90">{errorMessage}</p>
-          </div>
+        <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs sm:text-sm space-y-1">
+          <p className="font-bold">No fue posible procesar el pago</p>
+          <p className="text-xs text-rose-300/90">{errorMessage}</p>
         </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-8">
         {/* Sección 1: Datos de Contacto del Cliente */}
         <div className="bg-zinc-900/40 border border-zinc-800 p-6 rounded-2xl space-y-4">
-          <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-            <div className="flex items-center gap-2 text-sm font-bold text-white">
-              <User className="w-4 h-4 text-orange-400" />
-              <span>1. Titular de la Reserva (Cuenta Oficial YourSelf Music)</span>
-            </div>
-            {user && (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[11px] font-semibold">
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Cliente Verificado en Supabase</span>
-              </span>
-            )}
+          <div className="border-b border-zinc-800 pb-3">
+            <h3 className="text-sm font-bold text-white">1. Datos de contacto</h3>
           </div>
-
-          {user && (
-            <div className="p-3 bg-zinc-800/40 border border-zinc-700/60 rounded-xl text-xs text-zinc-300 flex items-center justify-between">
-              <div className="space-y-0.5">
-                <p className="font-semibold text-white">
-                  Titular: <span className="text-orange-400">{user.name || user.nombre}</span> (
-                  {user.email})
-                </p>
-                <p className="text-zinc-400 text-[11px]">
-                  Al confirmarse el pago en Mercado Pago, tu reservación cambiará automáticamente a{' '}
-                  <code className="text-emerald-400">confirmed</code> en Supabase.
-                </p>
-              </div>
-              <span className="text-[10px] bg-orange-500/10 text-orange-300 font-mono px-2.5 py-1 rounded-lg border border-orange-500/20">
-                Usuario #{user.id || user.usuario_id}
-              </span>
-            </div>
-          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2 space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-300">Nombre completo / Banda:</label>
+              <label className="text-xs font-medium text-zinc-300 block">
+                Nombre completo o nombre de la banda
+              </label>
               <input
                 type="text"
                 required
-                placeholder="Ej. Banda Los Alacranes / Carlos Mendoza"
+                placeholder="Ej. Carlos Mendoza"
                 value={nombre}
                 onChange={(e) => setNombre(e.target.value)}
                 className="w-full px-4 py-2.5 bg-zinc-800/80 border border-zinc-700 rounded-xl text-sm text-white focus:outline-none focus:border-orange-500"
@@ -508,9 +484,8 @@ export const PaymentPage: React.FC = () => {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1">
-                <Mail className="w-3.5 h-3.5 text-zinc-400" />
-                <span>Correo Electrónico (para envío de recibo):</span>
+              <label className="text-xs font-medium text-zinc-300 block">
+                Correo electrónico
               </label>
               <input
                 type="email"
@@ -523,9 +498,8 @@ export const PaymentPage: React.FC = () => {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1">
-                <Phone className="w-3.5 h-3.5 text-zinc-400" />
-                <span>Teléfono de Contacto (10 dígitos):</span>
+              <label className="text-xs font-medium text-zinc-300 block">
+                Teléfono de contacto (10 dígitos)
               </label>
               <input
                 type="tel"
@@ -541,112 +515,50 @@ export const PaymentPage: React.FC = () => {
 
         {/* Sección 2: Selección del Método de Pago */}
         <div className="bg-zinc-900/40 border border-zinc-800 p-6 rounded-2xl space-y-5">
-          <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-            <div className="flex items-center gap-2 text-sm font-bold text-white">
-              <CreditCard className="w-4 h-4 text-orange-400" />
-              <span>2. Pasarela de Pago (Mercado Pago Checkout API / SPEI)</span>
-            </div>
-            <span className="inline-flex items-center gap-1 text-[11px] text-sky-400 bg-sky-500/10 border border-sky-500/20 px-2.5 py-0.5 rounded-full font-semibold">
-              <Lock className="w-3 h-3" />
-              <span>MercadoPago.js v2 Activo</span>
-            </span>
+          <div className="border-b border-zinc-800 pb-3">
+            <h3 className="text-sm font-bold text-white">2. Método de pago</h3>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <button
               type="button"
               onClick={() => setPaymentMethod('card')}
-              className={`p-4 rounded-xl border text-left flex items-start gap-3 transition-all cursor-pointer ${
+              className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
                 paymentMethod === 'card'
-                  ? 'border-orange-500 bg-orange-500/10 text-white ring-1 ring-orange-500 shadow-lg'
+                  ? 'border-orange-500 bg-orange-500/10 text-white ring-1 ring-orange-500'
                   : 'border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:border-zinc-700'
               }`}
             >
-              <CreditCard className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-bold text-white">
-                  Tarjeta de Crédito / Débito (Mercado Pago)
-                </p>
-                <p className="text-xs text-zinc-400 mt-0.5">
-                  Cobro real tokenizado y confirmación automática inmediata en Supabase.
-                </p>
-              </div>
+              <p className="text-sm font-bold text-white">
+                Tarjeta de crédito o débito
+              </p>
+              <p className="text-xs text-zinc-400 mt-1">
+                Confirmación inmediata al procesar tu pago.
+              </p>
             </button>
 
             <button
               type="button"
               onClick={() => setPaymentMethod('transfer')}
-              className={`p-4 rounded-xl border text-left flex items-start gap-3 transition-all cursor-pointer ${
+              className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
                 paymentMethod === 'transfer'
-                  ? 'border-orange-500 bg-orange-500/10 text-white ring-1 ring-orange-500 shadow-lg'
+                  ? 'border-orange-500 bg-orange-500/10 text-white ring-1 ring-orange-500'
                   : 'border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:border-zinc-700'
               }`}
             >
-              <Building2 className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-bold text-white">Transferencia Bancaria SPEI</p>
-                <p className="text-xs text-zinc-400 mt-0.5">
-                  Registrada en Supabase (estado 'pending') hasta validación.
-                </p>
-              </div>
+              <p className="text-sm font-bold text-white">Transferencia bancaria SPEI</p>
+              <p className="text-xs text-zinc-400 mt-1">
+                Sujeta a validación del comprobante de transferencia.
+              </p>
             </button>
           </div>
 
-          {/* Formulario de Tarjeta Tokenizado con MercadoPago.js v2 */}
+          {/* Formulario de Tarjeta */}
           {paymentMethod === 'card' ? (
             <div className="space-y-4 pt-2">
-              <div className="p-3 rounded-xl bg-zinc-800/50 border border-zinc-700/70 space-y-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-[11px] font-semibold text-zinc-300">
-                    Tarjetas Oficiales de Prueba (Mercado Pago API de Orders México):
-                  </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCardholderName('APRO');
-                        setCardNumber('4075 5957 1648 3764');
-                        setCardExpiry('11/30');
-                        setCardCvc('123');
-                      }}
-                      className="text-[11px] px-2.5 py-1 rounded-lg bg-orange-500/15 hover:bg-orange-500/25 text-orange-300 border border-orange-500/30 font-semibold transition-colors cursor-pointer"
-                    >
-                      Usar Visa Crédito Prueba
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCardholderName('APRO');
-                        setCardNumber('5474 9254 3267 0366');
-                        setCardExpiry('11/30');
-                        setCardCvc('123');
-                      }}
-                      className="text-[11px] px-2.5 py-1 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/30 font-semibold transition-colors cursor-pointer"
-                    >
-                      Usar Mastercard Prueba
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCardholderName('APRO');
-                        setCardNumber('4189 1412 2126 7633');
-                        setCardExpiry('11/30');
-                        setCardCvc('123');
-                      }}
-                      className="text-[11px] px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 font-semibold transition-colors cursor-pointer"
-                    >
-                      Usar Visa Débito Prueba
-                    </button>
-                  </div>
-                </div>
-                <p className="text-[11px] text-zinc-400">
-                  En modo Sandbox de <strong>API de Orders</strong>, haz clic en cualquiera de los botones de arriba (o ingresa <code className="text-zinc-300">4075 5957 1648 3764</code>, Vencimiento <code className="text-zinc-300">11/30</code>, CVV <code className="text-zinc-300">123</code>, Titular <code className="text-zinc-300">APRO</code>).
-                </p>
-              </div>
-
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-zinc-300">
-                  Nombre del Titular (como aparece en la tarjeta):
+                <label className="text-xs font-medium text-zinc-300 block">
+                  Nombre del titular (como aparece en la tarjeta)
                 </label>
                 <input
                   type="text"
@@ -660,9 +572,9 @@ export const PaymentPage: React.FC = () => {
 
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-zinc-300">Número de Tarjeta:</label>
+                  <label className="text-xs font-medium text-zinc-300">Número de tarjeta</label>
                   {detectedBrand && (
-                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-orange-500/20 text-orange-300 border border-orange-500/30">
+                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700">
                       {detectedBrand}
                     </span>
                   )}
@@ -670,9 +582,9 @@ export const PaymentPage: React.FC = () => {
                 <input
                   type="text"
                   inputMode="numeric"
-                  autoComplete="off"
+                  autoComplete="cc-number"
                   required
-                  placeholder="4242 •••• •••• 4242"
+                  placeholder="0000 0000 0000 0000"
                   value={cardNumber}
                   onChange={handleCardNumberChange}
                   className="w-full px-4 py-2.5 bg-zinc-800/80 border border-zinc-700 rounded-xl text-sm text-white font-mono focus:outline-none focus:border-orange-500"
@@ -681,11 +593,13 @@ export const PaymentPage: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-zinc-300">Vencimiento (MM/AA):</label>
+                  <label className="text-xs font-medium text-zinc-300 block">
+                    Fecha de vencimiento (MM/AA)
+                  </label>
                   <input
                     type="text"
                     inputMode="numeric"
-                    autoComplete="off"
+                    autoComplete="cc-exp"
                     required
                     placeholder="MM/AA"
                     maxLength={5}
@@ -696,30 +610,21 @@ export const PaymentPage: React.FC = () => {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-zinc-300">
-                    Código de Seguridad (CVV/CVC):
+                  <label className="text-xs font-medium text-zinc-300 block">
+                    Código de seguridad (CVV)
                   </label>
                   <input
                     type="password"
                     inputMode="numeric"
-                    autoComplete="off"
+                    autoComplete="cc-csc"
                     required
-                    placeholder="•••"
+                    placeholder="123"
                     maxLength={4}
                     value={cardCvc}
                     onChange={handleCardCvcChange}
                     className="w-full px-4 py-2.5 bg-zinc-800/80 border border-zinc-700 rounded-xl text-sm text-white font-mono focus:outline-none focus:border-orange-500"
                   />
                 </div>
-              </div>
-
-              <div className="p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/20 flex items-start gap-2.5 text-[11px] text-zinc-400">
-                <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                <span>
-                  <strong className="text-emerald-300">Protección PCI-DSS con Mercado Pago:</strong>{' '}
-                  Los datos sensibles de tu tarjeta se convierten en un token criptográfico directamente en tu navegador mediante{' '}
-                  <code className="text-zinc-300">MercadoPago.js v2</code> y jamás viajan crudos hacia nuestro servidor.
-                </span>
               </div>
             </div>
           ) : (
@@ -731,38 +636,61 @@ export const PaymentPage: React.FC = () => {
                   <span className="font-bold text-white">BBVA México</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-zinc-400">CLABE Interbancaria:</span>
+                  <span className="text-zinc-400">CLABE interbancaria:</span>
                   <span className="font-mono font-bold text-orange-400">012 180 015482930412 8</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-zinc-400">Beneficiario:</span>
-                  <span className="text-white">YourSelf Music S.A. de C.V.</span>
+                  <span className="text-white">YourSelf Music</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-zinc-400">Monto Exacto:</span>
+                  <span className="text-zinc-400">Monto a transferir:</span>
                   <span className="font-bold text-emerald-400">${bookingData.totalPrice} MXN</span>
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-zinc-300">
-                  Número de Rastreo / Clave de Rastreo SPEI / Comprobante:
+                <label className="text-xs font-medium text-zinc-300 block">
+                  Clave de rastreo o número de referencia SPEI
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="Ej. SPEI-892140 o folio bancario"
+                  placeholder="Ingresa la clave de rastreo de tu transferencia"
                   value={transferRef}
                   onChange={(e) => setTransferRef(e.target.value)}
                   className="w-full px-4 py-2.5 bg-zinc-800/80 border border-zinc-700 rounded-xl text-sm text-white font-mono focus:outline-none focus:border-orange-500"
                 />
                 <span className="text-[11px] text-zinc-500 block">
-                  El personal de YourSelf Music validará este número con la cuenta bancaria para confirmar en Supabase.
+                  Tu reservación quedará confirmada una vez validada la transferencia.
                 </span>
               </div>
             </div>
           )}
         </div>
+
+        {/* Nota discreta sobre política de cancelación */}
+        <div className="text-xs text-zinc-400 leading-relaxed px-1">
+          <strong className="text-zinc-300">Política de cancelación:</strong> Las cancelaciones realizadas el mismo día del ensayo o un día antes tienen un cargo de ${MULTA_CANCELACION_MXN}.00 MXN en total por la banda. Cancelar con 2 o más días de anticipación no genera ningún costo.
+        </div>
+
+        {adeudoActivo > 0 && (
+          <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+            <div className="text-rose-300">
+              <p className="font-bold text-white">Tienes un saldo pendiente por cancelación: ${adeudoActivo} MXN</p>
+              <p className="text-rose-200/80 mt-0.5">
+                Es necesario liquidar el saldo pendiente en tu cuenta antes de registrar una nueva reservación.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/my-reservations')}
+              className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold shrink-0 cursor-pointer transition-colors"
+            >
+              Ver mis reservaciones
+            </button>
+          </div>
+        )}
 
         {/* Botón de Confirmación y Procesamiento */}
         <button
@@ -773,19 +701,71 @@ export const PaymentPage: React.FC = () => {
           {isProcessing ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
-              <span>{processingStep || 'Procesando pago seguro con Mercado Pago...'}</span>
+              <span>{processingStep || 'Procesando pago...'}</span>
             </>
           ) : (
-            <>
-              <CheckCircle2 className="w-5 h-5" />
-              <span>
-                Confirmar y Pagar ${bookingData.totalPrice} MXN ({numPersonas}{' '}
-                {numPersonas === 1 ? 'integrante' : 'integrantes'})
-              </span>
-            </>
+            <span>Pagar ${bookingData.totalPrice} MXN</span>
           )}
         </button>
       </form>
+
+      {/* Modal de Confirmación de Política de Cancelación */}
+      {showPolicyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-zinc-900 border border-zinc-800 shadow-2xl overflow-hidden">
+            <div className="p-5 border-b border-zinc-800 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-white">
+                  Política de cancelación
+                </h3>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  Revisa las condiciones antes de confirmar tu pago
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPolicyModal(false)}
+                className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs sm:text-sm text-zinc-300">
+              <p className="leading-relaxed">
+                Estás por confirmar tu reservación para la <strong className="text-white">{bookingData.nombreSala}</strong> el día{' '}
+                <strong className="text-white">{bookingData.fecha}</strong> de {bookingData.horaInicio.slice(0, 5)} a {bookingData.horaFin.slice(0, 5)} hrs.
+              </p>
+
+              <div className="p-4 rounded-xl bg-zinc-950/80 border border-zinc-800 space-y-2.5 text-xs text-zinc-300 leading-relaxed">
+                <p>
+                  En caso de cancelar la reservación <strong className="text-white">el mismo día del ensayo o un día antes</strong> (por ejemplo, si el ensayo es el miércoles y se cancela el martes o el miércoles), se aplicará un cargo por cancelación de <strong className="text-orange-400">${MULTA_CANCELACION_MXN}.00 MXN en total por toda la banda</strong>.
+                </p>
+                <p className="text-zinc-400">
+                  Este cargo se descuenta del monto pagado y se reembolsa la diferencia (${Math.max(0, bookingData.totalPrice - MULTA_CANCELACION_MXN)} MXN). Si cancelas con 2 o más días de anticipación, la cancelación no tiene ningún costo.
+                </p>
+              </div>
+
+              <div className="pt-2 flex flex-col sm:flex-row items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowPolicyModal(false)}
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold text-xs transition-colors cursor-pointer"
+                >
+                  Volver
+                </button>
+                <button
+                  type="button"
+                  onClick={ejecutarPagoConfirmado}
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs transition-all cursor-pointer"
+                >
+                  Aceptar y pagar ${bookingData.totalPrice} MXN
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

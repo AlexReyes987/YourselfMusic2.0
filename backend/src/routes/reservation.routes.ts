@@ -32,6 +32,24 @@ reservationRouter.get('/my-reservations', authenticate, async (req, res, next) =
 });
 
 /**
+ * GET /api/reservaciones/mi-adeudo
+ * Consulta si el cliente autenticado tiene adeudos pendientes por multas de cancelación tardía ($105 MXN).
+ */
+reservationRouter.get('/mi-adeudo', authenticate, ReservationController.getMiAdeudo);
+
+/**
+ * POST /api/reservaciones/:id/cancelar
+ * Cancela una reservación aplicando automáticamente la multa fija de $105 MXN si es el mismo día o 1 día antes.
+ */
+reservationRouter.post('/:id/cancelar', authenticate, ReservationController.cancelar);
+
+/**
+ * POST /api/reservaciones/:id/liquidar-multa
+ * Registra el pago/liquidación de una multa pendiente por cancelación tardía.
+ */
+reservationRouter.post('/:id/liquidar-multa', authenticate, ReservationController.liquidarMulta);
+
+/**
  * POST /api/reservaciones
  * Validación estricta en servidor: Requiere cuenta real autenticada (token Bearer).
  * Valida solapamiento y registra la cita vinculada al usuario real y su pago en Supabase.

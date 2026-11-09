@@ -38,7 +38,7 @@ export const AdminRoomsPage: React.FC = () => {
 
         <button
           onClick={() => cargarSalas()}
-          className="p-2 rounded-xl bg-[#181b24] hover:bg-zinc-800 border border-[#2a3142] text-zinc-300 hover:text-white transition-colors"
+          className="p-2 rounded-xl bg-[#141417] hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white transition-colors"
           title="Recargar salas"
         >
           <RotateCcw className={`w-4 h-4 ${loading ? 'animate-spin text-orange-400' : ''}`} />
@@ -46,7 +46,7 @@ export const AdminRoomsPage: React.FC = () => {
       </div>
 
       {loading ? (
-        <div className="p-12 text-center text-zinc-400 border border-[#2a3142] rounded-2xl bg-[#181b24]">
+        <div className="p-12 text-center text-zinc-400 border border-zinc-800 rounded-2xl bg-[#141417]">
           <Loader2 className="w-8 h-8 animate-spin mx-auto text-orange-500 mb-2" />
           <p className="text-xs">Cargando salas desde la base de datos...</p>
         </div>
@@ -55,7 +55,7 @@ export const AdminRoomsPage: React.FC = () => {
           {salas.map((room) => (
             <div
               key={room.sala_id}
-              className="p-5 rounded-2xl bg-[#181b24] border border-[#2a3142] space-y-4 hover:border-orange-500/40 transition-colors shadow-lg"
+              className="p-5 rounded-2xl bg-[#141417] border border-zinc-800 space-y-4 hover:border-orange-500/40 transition-colors shadow-lg"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -70,11 +70,11 @@ export const AdminRoomsPage: React.FC = () => {
                 </span>
               </div>
 
-              <p className="text-xs text-zinc-300 leading-relaxed bg-[#1f2430]/60 p-3 rounded-xl border border-[#2a3142]">
+              <p className="text-xs text-zinc-300 leading-relaxed bg-[#1b1b20]/60 p-3 rounded-xl border border-zinc-800">
                 {room.descripcion || 'Equipamiento profesional de audio e instrumentos.'}
               </p>
 
-              <div className="flex items-center justify-between text-xs pt-1 border-t border-[#2a3142]/60">
+              <div className="flex items-center justify-between text-xs pt-1 border-t border-zinc-800/60">
                 <div className="flex items-center gap-1.5 text-zinc-400">
                   <Users className="w-4 h-4 text-zinc-500" />
                   <span>Capacidad: <strong className="text-white">{room.capacidad} músicos</strong></span>

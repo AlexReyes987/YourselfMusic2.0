@@ -73,7 +73,7 @@ export const AdminCalendarPage: React.FC = () => {
 
         {/* Controles de fecha y botón crear */}
         <div className="flex flex-wrap items-center gap-2.5">
-          <div className="flex items-center bg-[#181b24] border border-[#2a3142] rounded-xl p-1">
+          <div className="flex items-center bg-[#141417] border border-zinc-800 rounded-xl p-1">
             <button
               onClick={() => cambiarDia(-1)}
               className="p-1 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
@@ -98,14 +98,14 @@ export const AdminCalendarPage: React.FC = () => {
 
           <button
             onClick={() => setCurrentDate(new Date().toISOString().split('T')[0])}
-            className="px-3 py-1.5 rounded-xl bg-[#181b24] border border-[#2a3142] text-xs text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors"
+            className="px-3 py-1.5 rounded-xl bg-[#141417] border border-zinc-800 text-xs text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors"
           >
             Hoy
           </button>
 
           <button
             onClick={() => cargarReservaciones()}
-            className="p-2 rounded-xl bg-[#181b24] hover:bg-zinc-800 border border-[#2a3142] text-zinc-300 hover:text-white transition-colors"
+            className="p-2 rounded-xl bg-[#141417] hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white transition-colors"
             title="Recargar"
           >
             <RotateCcw className={`w-4 h-4 ${loading ? 'animate-spin text-orange-400' : ''}`} />
@@ -126,7 +126,7 @@ export const AdminCalendarPage: React.FC = () => {
       </div>
 
       {loading ? (
-        <div className="p-12 text-center text-zinc-400 border border-[#2a3142] rounded-2xl bg-[#181b24]">
+        <div className="p-12 text-center text-zinc-400 border border-zinc-800 rounded-2xl bg-[#141417]">
           <Loader2 className="w-8 h-8 animate-spin mx-auto text-orange-500 mb-3" />
           <p className="text-sm font-medium">Consultando ocupación de las 4 salas...</p>
         </div>

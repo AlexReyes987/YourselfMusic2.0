@@ -1,20 +1,6 @@
 import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import {
-  CheckCircle2,
-  Clock,
-  Calendar,
-  MapPin,
-  Volume2,
-  CreditCard,
-  ShieldCheck,
-  Users,
-  Mail,
-  X,
-  Loader2,
-  Receipt,
-  AlertCircle,
-} from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { paymentService } from '../services/paymentService';
 
@@ -53,8 +39,8 @@ export const ConfirmationPage: React.FC = () => {
   const nombreCliente = state?.cliente?.nombre || user?.name || user?.nombre || 'Cliente YourSelf Music';
   const metodoPagoTexto =
     state?.paymentMethod === 'card'
-      ? `Tarjeta ${state?.cardBrand || 'Bancaria'} (Mercado Pago)`
-      : 'Transferencia Bancaria SPEI';
+      ? `Tarjeta ${state?.cardBrand || 'bancaria'}`
+      : 'Transferencia bancaria SPEI';
 
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [emailSentSuccess, setEmailSentSuccess] = useState<string | null>(null);
@@ -62,7 +48,7 @@ export const ConfirmationPage: React.FC = () => {
 
   const handleEnviarReciboCorreo = async () => {
     if (!emailCuenta) {
-      setEmailError('No se encontró un correo electrónico en tu sesión activa.');
+      setEmailError('No se encontró un correo electrónico asociado a tu sesión.');
       return;
     }
 
@@ -87,7 +73,7 @@ export const ConfirmationPage: React.FC = () => {
       });
 
       setEmailSentSuccess(
-        resp?.message || `¡Recibo de pago enviado exitosamente a ${emailCuenta}!`
+        resp?.message || `El recibo de pago fue enviado a ${emailCuenta}.`
       );
     } catch (err: any) {
       const msg =
@@ -107,51 +93,32 @@ export const ConfirmationPage: React.FC = () => {
   return (
     <div className="max-w-2xl mx-auto px-4 py-10 sm:py-14 space-y-6">
       {/* Encabezado y Mensaje de Confirmación */}
-      <div className="text-center space-y-3">
-        <div
-          className={`inline-flex items-center justify-center w-16 h-16 rounded-full border ${
-            isConfirmed
-              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-              : 'bg-amber-500/10 border-amber-500/30 text-amber-400'
-          }`}
-        >
-          {isConfirmed ? (
-            <CheckCircle2 className="w-10 h-10" />
-          ) : (
-            <Clock className="w-10 h-10" />
-          )}
-        </div>
-
+      <div className="text-center space-y-2">
         <h1 className="text-2xl sm:text-3xl font-extrabold text-white">
-          {isConfirmed
-            ? '¡Pago Aprobado y Reservación Confirmada!'
-            : '¡Reservación Registrada con Éxito!'}
+          {isConfirmed ? 'Reservación confirmada' : 'Reservación registrada'}
         </h1>
 
-        <p className="text-xs sm:text-sm text-zinc-300 max-w-lg mx-auto">
+        <p className="text-xs sm:text-sm text-zinc-400 max-w-lg mx-auto">
           {state?.mensajeConfirmacion ||
             (isConfirmed
-              ? 'Tu pago ha sido procesado exitosamente por Mercado Pago y el estado de tu reservación se ha actualizado automáticamente a Confirmada en Supabase.'
-              : 'Tu pago por transferencia SPEI está registrado en Supabase y en proceso de validación administrativa.')}
+              ? 'Tu pago se procesó correctamente y tu sala de ensayo ha quedado reservada.'
+              : 'Hemos recibido tu referencia de transferencia y se encuentra en proceso de validación.')}
         </p>
       </div>
 
       {/* Comprobante / Recibo de Pago en Pantalla */}
-      <div className="bg-zinc-900/80 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl">
+      <div className="bg-zinc-900/80 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl">
         {/* Cabecera del Recibo */}
-        <div className="bg-gradient-to-r from-orange-600 to-orange-500 px-6 py-4 flex items-center justify-between text-white">
-          <div className="flex items-center gap-2.5">
-            <Receipt className="w-5 h-5" />
-            <div>
-              <h2 className="text-sm sm:text-base font-extrabold tracking-tight">
-                Recibo Oficial de Pago — YourSelf Music
-              </h2>
-              <p className="text-[11px] text-orange-100">
-                Comprobante electrónico de reservación de sala de ensayo
-              </p>
-            </div>
+        <div className="bg-zinc-900 border-b border-zinc-800 px-6 py-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm sm:text-base font-bold text-white">
+              Comprobante de pago — YourSelf Music
+            </h2>
+            <p className="text-xs text-zinc-400">
+              Recibo de reservación de sala de ensayo
+            </p>
           </div>
-          <span className="px-3 py-1 rounded-full bg-black/25 text-white font-mono text-xs font-bold">
+          <span className="px-3 py-1 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 font-mono text-xs font-semibold">
             Folio #{folio}
           </span>
         </div>
@@ -160,11 +127,11 @@ export const ConfirmationPage: React.FC = () => {
         <div className="p-6 space-y-4 text-xs sm:text-sm">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-4 border-b border-zinc-800">
             <div>
-              <span className="text-zinc-400 text-xs block">ID Transacción Mercado Pago:</span>
-              <span className="font-mono font-bold text-white">{transaccionId}</span>
+              <span className="text-zinc-400 text-xs block">Número de operación:</span>
+              <span className="font-mono font-semibold text-white">{transaccionId}</span>
             </div>
             <div className="sm:text-right">
-              <span className="text-zinc-400 text-xs block">Fecha y Hora de Pago:</span>
+              <span className="text-zinc-400 text-xs block">Fecha y hora:</span>
               <span className="font-medium text-zinc-200">
                 {state?.fechaPago
                   ? new Date(state.fechaPago).toLocaleString('es-MX')
@@ -175,114 +142,99 @@ export const ConfirmationPage: React.FC = () => {
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-zinc-400">Titular de la Reserva:</span>
-              <span className="font-bold text-white">{nombreCliente}</span>
+              <span className="text-zinc-400">Titular:</span>
+              <span className="font-semibold text-white">{nombreCliente}</span>
             </div>
 
             {emailCuenta && (
               <div className="flex items-center justify-between">
-                <span className="text-zinc-400">Correo de la Cuenta:</span>
-                <span className="text-zinc-200 font-medium">{emailCuenta}</span>
+                <span className="text-zinc-400">Correo electrónico:</span>
+                <span className="text-zinc-200">{emailCuenta}</span>
               </div>
             )}
 
             {state?.roomName && (
               <div className="flex items-center justify-between">
-                <span className="text-zinc-400 flex items-center gap-1.5">
-                  <Volume2 className="w-4 h-4 text-orange-400" />
-                  <span>Sala Reservada:</span>
-                </span>
-                <span className="font-bold text-white">{state.roomName}</span>
+                <span className="text-zinc-400">Sala reservada:</span>
+                <span className="font-semibold text-white">{state.roomName}</span>
               </div>
             )}
 
             <div className="flex items-center justify-between">
-              <span className="text-zinc-400 flex items-center gap-1.5">
-                <Calendar className="w-4 h-4 text-orange-400" />
-                <span>Fecha y Horario:</span>
-              </span>
-              <span className="font-semibold text-white">
+              <span className="text-zinc-400">Fecha y horario:</span>
+              <span className="font-medium text-white">
                 {state?.date || 'Hoy'} {state?.hours ? `(${state.hours})` : ''}
               </span>
             </div>
 
             {state?.numMiembros && (
               <div className="flex items-center justify-between">
-                <span className="text-zinc-400 flex items-center gap-1.5">
-                  <Users className="w-4 h-4 text-orange-400" />
-                  <span>Integrantes Registrados:</span>
-                </span>
-                <span className="text-white font-semibold">
-                  {state.numMiembros} {state.numMiembros === 1 ? 'músico' : 'músicos'} ($35 MXN/h c/u)
+                <span className="text-zinc-400">Integrantes:</span>
+                <span className="text-white font-medium">
+                  {state.numMiembros} {state.numMiembros === 1 ? 'músico' : 'músicos'}
                 </span>
               </div>
             )}
 
             <div className="flex items-center justify-between">
-              <span className="text-zinc-400 flex items-center gap-1.5">
-                <CreditCard className="w-4 h-4 text-orange-400" />
-                <span>Método de Pago:</span>
-              </span>
-              <span className="text-zinc-200 font-medium">
+              <span className="text-zinc-400">Método de pago:</span>
+              <span className="text-zinc-200">
                 {metodoPagoTexto}
                 {state?.lastFourDigits ? ` •••• ${state.lastFourDigits}` : ''}
               </span>
             </div>
 
             <div className="flex items-center justify-between pt-2 border-t border-zinc-800">
-              <span className="text-zinc-400">Estado de la Reserva en Base de Datos:</span>
+              <span className="text-zinc-400">Estado de la reservación:</span>
               <span
-                className={`px-3 py-0.5 rounded-full text-xs font-bold ${
+                className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
                   isConfirmed
-                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                    : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                    : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
                 }`}
               >
-                {isConfirmed ? 'CONFIRMADA (confirmed)' : 'POR VALIDAR (pending)'}
+                {isConfirmed ? 'Confirmada' : 'Pendiente de validación'}
               </span>
             </div>
           </div>
 
           {/* Total Pagado */}
-          <div className="mt-4 p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800 flex items-center justify-between">
+          <div className="mt-4 p-4 rounded-xl bg-zinc-950/70 border border-zinc-800 flex items-center justify-between">
             <div>
-              <span className="text-xs text-zinc-400 block">Monto Total Pagado</span>
-              <span className="text-[11px] text-zinc-500">IVA incluido • Moneda Nacional</span>
+              <span className="text-xs text-zinc-400 block">Total pagado</span>
+              <span className="text-[11px] text-zinc-500">IVA incluido • MXN</span>
             </div>
-            <span className="text-2xl font-black text-emerald-400">
+            <span className="text-2xl font-black text-white">
               ${state?.totalPrice ?? 0} MXN
             </span>
           </div>
 
-          <div className="flex items-center gap-2 text-zinc-400 text-xs pt-1">
-            <MapPin className="w-4 h-4 text-orange-400 shrink-0" />
-            <span>YourSelf Music Estudio — Durango, Dgo., México</span>
+          <div className="text-zinc-500 text-xs pt-1">
+            YourSelf Music Estudio — Durango, Dgo.
           </div>
         </div>
       </div>
 
       {/* Mensajes de estado de envío por correo */}
       {emailSentSuccess && (
-        <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs sm:text-sm flex items-center gap-3">
-          <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0" />
-          <span>{emailSentSuccess}</span>
+        <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs sm:text-sm">
+          {emailSentSuccess}
         </div>
       )}
 
       {emailError && (
-        <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs sm:text-sm flex items-center gap-3">
-          <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
-          <span>{emailError}</span>
+        <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs sm:text-sm">
+          {emailError}
         </div>
       )}
 
-      {/* Botones requeridos: Enviar recibo al correo con el que inició sesión y Cerrar a un lado */}
+      {/* Botones requeridos: Enviar recibo al correo y Cerrar a un lado */}
       <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
         <button
           type="button"
           onClick={handleEnviarReciboCorreo}
           disabled={isSendingEmail || Boolean(emailSentSuccess)}
-          className="w-full sm:w-auto flex-1 inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white text-xs sm:text-sm font-bold transition-all shadow-lg shadow-orange-500/20 cursor-pointer"
+          className="w-full sm:w-auto flex-1 inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white text-xs sm:text-sm font-bold transition-all cursor-pointer"
         >
           {isSendingEmail ? (
             <>
@@ -290,25 +242,18 @@ export const ConfirmationPage: React.FC = () => {
               <span>Enviando recibo a {emailCuenta}...</span>
             </>
           ) : emailSentSuccess ? (
-            <>
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Recibo Enviado a {emailCuenta}</span>
-            </>
+            <span>Recibo enviado a {emailCuenta}</span>
           ) : (
-            <>
-              <Mail className="w-4 h-4" />
-              <span>Enviar recibo a mi correo ({emailCuenta || 'mi cuenta'})</span>
-            </>
+            <span>Enviar recibo a mi correo ({emailCuenta || 'mi cuenta'})</span>
           )}
         </button>
 
         <button
           type="button"
           onClick={handleCerrarComprobante}
-          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white text-xs sm:text-sm font-bold transition-colors cursor-pointer"
+          className="w-full sm:w-auto inline-flex items-center justify-center px-6 py-3.5 rounded-xl border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
         >
-          <X className="w-4 h-4" />
-          <span>Cerrar</span>
+          Cerrar
         </button>
       </div>
     </div>

@@ -115,7 +115,7 @@ export const AdminReservationsPage: React.FC = () => {
         <div className="flex items-center gap-2.5">
           <button
             onClick={() => cargarDatos()}
-            className="p-2 rounded-xl bg-[#181b24] hover:bg-zinc-800 border border-[#2a3142] text-zinc-300 hover:text-white transition-colors"
+            className="p-2 rounded-xl bg-[#141417] hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white transition-colors"
             title="Recargar datos"
           >
             <RotateCcw className={`w-4 h-4 ${loading ? 'animate-spin text-orange-400' : ''}`} />
@@ -146,26 +146,26 @@ export const AdminReservationsPage: React.FC = () => {
 
       {/* Tarjetas de Estadísticas Rápidas */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="p-3.5 rounded-xl bg-[#181b24] border border-[#2a3142]">
+        <div className="p-3.5 rounded-xl bg-[#141417] border border-zinc-800">
           <span className="text-[11px] text-zinc-400 font-medium">Total en Vista</span>
           <p className="text-xl font-black text-white mt-0.5">{total}</p>
         </div>
-        <div className="p-3.5 rounded-xl bg-[#181b24] border border-[#2a3142]">
+        <div className="p-3.5 rounded-xl bg-[#141417] border border-zinc-800">
           <span className="text-[11px] text-emerald-400 font-medium">Confirmadas</span>
           <p className="text-xl font-black text-emerald-400 mt-0.5">{confirmadas}</p>
         </div>
-        <div className="p-3.5 rounded-xl bg-[#181b24] border border-[#2a3142]">
+        <div className="p-3.5 rounded-xl bg-[#141417] border border-zinc-800">
           <span className="text-[11px] text-amber-400 font-medium">Pendientes de Pago</span>
           <p className="text-xl font-black text-amber-400 mt-0.5">{pendientes}</p>
         </div>
-        <div className="p-3.5 rounded-xl bg-[#181b24] border border-[#2a3142]">
+        <div className="p-3.5 rounded-xl bg-[#141417] border border-zinc-800">
           <span className="text-[11px] text-rose-400 font-medium">Canceladas</span>
           <p className="text-xl font-black text-rose-400 mt-0.5">{canceladas}</p>
         </div>
       </div>
 
       {/* Barra de Filtros y Búsqueda */}
-      <div className="p-4 rounded-2xl bg-[#181b24] border border-[#2a3142] grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="p-4 rounded-2xl bg-[#141417] border border-zinc-800 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
         {/* Búsqueda por texto */}
         <div className="relative">
           <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-2.5" />
@@ -174,7 +174,7 @@ export const AdminReservationsPage: React.FC = () => {
             placeholder="Buscar por cliente, folio o tel..."
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 rounded-xl bg-[#1f2430] border border-[#2a3142] text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500"
+            className="w-full pl-9 pr-3 py-2 rounded-xl bg-[#1b1b20] border border-zinc-800 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500"
           />
         </div>
 
@@ -184,7 +184,7 @@ export const AdminReservationsPage: React.FC = () => {
             type="date"
             value={filtroFecha}
             onChange={(e) => setFiltroFecha(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl bg-[#1f2430] border border-[#2a3142] text-xs text-white focus:outline-none focus:border-orange-500"
+            className="w-full px-3 py-2 rounded-xl bg-[#1b1b20] border border-zinc-800 text-xs text-white focus:outline-none focus:border-orange-500"
           />
           {filtroFecha && (
             <button
@@ -203,7 +203,7 @@ export const AdminReservationsPage: React.FC = () => {
             onChange={(e) =>
               setFiltroSala(e.target.value === 'todas' ? 'todas' : Number(e.target.value))
             }
-            className="w-full px-3 py-2 rounded-xl bg-[#1f2430] border border-[#2a3142] text-xs text-white focus:outline-none focus:border-orange-500"
+            className="w-full px-3 py-2 rounded-xl bg-[#1b1b20] border border-zinc-800 text-xs text-white focus:outline-none focus:border-orange-500"
           >
             <option value="todas">Todas las Salas (1 a 4)</option>
             <option value={1}>Sala 1 - Azul / Neon</option>
@@ -218,7 +218,7 @@ export const AdminReservationsPage: React.FC = () => {
           <select
             value={filtroEstado}
             onChange={(e) => setFiltroEstado(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl bg-[#1f2430] border border-[#2a3142] text-xs text-white focus:outline-none focus:border-orange-500"
+            className="w-full px-3 py-2 rounded-xl bg-[#1b1b20] border border-zinc-800 text-xs text-white focus:outline-none focus:border-orange-500"
           >
             <option value="todos">Todos los Estados</option>
             <option value="confirmed">Confirmadas</option>
@@ -229,11 +229,11 @@ export const AdminReservationsPage: React.FC = () => {
       </div>
 
       {/* Tabla de Reservaciones */}
-      <div className="border border-[#2a3142] rounded-2xl bg-[#181b24] overflow-hidden shadow-xl">
+      <div className="border border-zinc-800 rounded-2xl bg-[#141417] overflow-hidden shadow-xl">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="bg-[#1f2430] border-b border-[#2a3142] text-zinc-400 font-semibold">
+              <tr className="bg-[#1b1b20] border-b border-zinc-800 text-zinc-400 font-semibold">
                 <th className="p-3.5">Folio</th>
                 <th className="p-3.5">Cliente / Contacto</th>
                 <th className="p-3.5">Sala Asignada</th>
@@ -243,7 +243,7 @@ export const AdminReservationsPage: React.FC = () => {
                 <th className="p-3.5 text-right">Acciones</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#2a3142]/60">
+            <tbody className="divide-y divide-zinc-800/60">
               {loading ? (
                 <tr>
                   <td colSpan={7} className="p-8 text-center text-zinc-400">
@@ -380,7 +380,7 @@ export const AdminReservationsPage: React.FC = () => {
                                   setResSeleccionada(res);
                                   setIsModificarOpen(true);
                                 }}
-                                className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-[#2a3142] transition-colors"
+                                className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-800 transition-colors"
                                 title="Reprogramar Horario o Sala"
                               >
                                 <Edit2 className="w-3.5 h-3.5 text-orange-400" />

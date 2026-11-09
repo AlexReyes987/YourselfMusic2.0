@@ -6,7 +6,7 @@ import { Sala, RangoLibre } from '../types';
 import { roomService } from '../services/roomService';
 import { reservationService } from '../services/reservationService';
 import { useAuth } from '../context/AuthContext';
-import { Calendar as CalendarIcon, ArrowRight, Music, ShieldCheck, Sparkles, AlertCircle, Users, Plus, Minus, UserCheck } from 'lucide-react';
+import { Plus, Minus } from 'lucide-react';
 
 export const BookingPage: React.FC = () => {
   const navigate = useNavigate();
@@ -21,7 +21,7 @@ export const BookingPage: React.FC = () => {
 
   const [startHour, setStartHour] = useState<number | null>(null);
   const [duration, setDuration] = useState<number>(1);
-  const [numMiembros, setNumMiembros] = useState<number>(4); // Por defecto 4 miembros según especificación
+  const [numMiembros, setNumMiembros] = useState<number>(4);
 
   // Estados de disponibilidad en tiempo real (12:00 PM a 23:00 PM Lunes a Sábado)
   const [horasLibres, setHorasLibres] = useState<number[]>([]);
@@ -31,7 +31,7 @@ export const BookingPage: React.FC = () => {
   const [isLoadingDisponibilidad, setIsLoadingDisponibilidad] = useState<boolean>(false);
   const [errorDisponibilidad, setErrorDisponibilidad] = useState<string | null>(null);
 
-  // 1. Cargar las 4 salas de ensayo desde Supabase/Backend (/api/salas)
+  // 1. Cargar las 4 salas de ensayo
   useEffect(() => {
     async function loadSalas() {
       try {
@@ -47,7 +47,7 @@ export const BookingPage: React.FC = () => {
     loadSalas();
   }, []);
 
-  // 2. Consultar disponibilidad en tiempo real cada vez que cambia la sala o la fecha
+  // 2. Consultar disponibilidad cada vez que cambia la sala o la fecha
   useEffect(() => {
     async function fetchDisponibilidad() {
       if (!selectedSalaId || !selectedDate) return;
@@ -62,7 +62,6 @@ export const BookingPage: React.FC = () => {
         setHoraApertura(resp.horario_operativo?.hora_apertura || '12:00:00');
         setHoraCierre(resp.horario_operativo?.hora_cierre || '23:00:00');
 
-        // Si la hora seleccionada no está en las horas libres, seleccionar la primera disponible
         if (resp.horas_libres && resp.horas_libres.length > 0) {
           if (startHour === null || !resp.horas_libres.includes(startHour)) {
             setStartHour(resp.horas_libres[0]);
@@ -71,8 +70,7 @@ export const BookingPage: React.FC = () => {
           setStartHour(null);
         }
       } catch (err: any) {
-        console.warn('Fallo consultando disponibilidad en backend, usando fallback 12:00 a 23:00:', err);
-        // Fallback horario oficial: 12:00 a 23:00 de Lunes a Sábado
+        console.warn('Fallo consultando disponibilidad, usando horario predeterminado 12:00 a 23:00:', err);
         const demoLibres = [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22];
         setHorasLibres(demoLibres);
         setRangosLibres([{ hora_inicio: '12:00:00', hora_fin: '23:00:00' }]);
@@ -113,7 +111,6 @@ export const BookingPage: React.FC = () => {
       totalPrice,
     };
 
-    // Si el usuario no ha iniciado sesión, guardar en sessionStorage y redirigir a /login
     if (!isAuthenticated) {
       try {
         sessionStorage.setItem('pendingBooking', JSON.stringify(bookingPayload));
@@ -125,7 +122,7 @@ export const BookingPage: React.FC = () => {
         state: {
           from: '/payment',
           bookingData: bookingPayload,
-          message: 'Para confirmar tu reservación en la sala, por favor inicia sesión o crea tu cuenta.',
+          message: 'Inicia sesión o crea tu cuenta para continuar con tu reservación.',
         },
       });
       return;
@@ -138,44 +135,23 @@ export const BookingPage: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8">
-        {/* Encabezado */}
-        {isAuthenticated ? (
-            <div>
-              <h1 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
-                Reserva tu Sala de Ensayo
-              </h1>
-              <p className="text-xs sm:text-sm text-zinc-400 mt-1 max-w-2xl">
-                Selecciona una de las 4 salas especializadas ($35 por persona/h, capacidad hasta 9 músicos),
-                especifica tus integrantes y asegura tu bloque de ensayo sin riesgo de solapamiento.
-              </p>
-            </div>
-        ): (
-          
-            <div>
-                <h1 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
-                  Reserva tu Sala de Ensayo
-                </h1>
-                <p className="text-xs sm:text-sm text-zinc-400 mt-1 max-w-2xl">
-                  Selecciona una de las 4 salas especializadas ($35 por persona/h, capacidad hasta 9 músicos),
-                  especifica tus integrantes y asegura tu bloque de ensayo sin riesgo de solapamiento.
-                </p>
-                <br></br>
-                <div className="p-2.5 rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-300 text-xs flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-orange-400 shrink-0" />
-                  <span>Se te pedirá iniciar sesión o crear tu cuenta antes de pagar.</span>
-                </div>
-            </div>
-        )}
-
+      {/* Encabezado */}
+      <div>
+        <h1 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
+          Reserva tu sala de ensayo
+        </h1>
+        <p className="text-xs sm:text-sm text-zinc-400 mt-1 max-w-2xl">
+          Elige la fecha, la sala, el número de integrantes y el horario para tu ensayo ($35 MXN por persona por hora).
+        </p>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
         {/* Columna Principal: Selección de Sala, Fecha, Miembros y Horarios */}
         <div className="lg:col-span-2 space-y-8">
           {/* Paso 1: Selección de Fecha */}
           <div className="bg-zinc-900/40 border border-zinc-800 p-5 rounded-2xl space-y-3">
-            <label className="flex items-center gap-2 text-sm font-bold text-white">
-              <CalendarIcon className="w-4 h-4 text-orange-400" />
-              <span>1. Selecciona la Fecha del Ensayo</span>
+            <label className="block text-sm font-bold text-white">
+              1. Selecciona la fecha del ensayo
             </label>
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
               <input
@@ -186,7 +162,7 @@ export const BookingPage: React.FC = () => {
                 className="w-full sm:w-auto px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-white font-medium focus:outline-none focus:border-orange-500 cursor-pointer"
               />
               <span className="text-xs text-zinc-400">
-                Horario de atención: 12:00 PM a 11:00 PM (Lunes a Sábado).
+                Horario de servicio: lunes a sábado de 12:00 a 23:00 hrs.
               </span>
             </div>
           </div>
@@ -194,11 +170,10 @@ export const BookingPage: React.FC = () => {
           {/* Paso 2: Catálogo de las 4 Salas Físicas */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                <Music className="w-4 h-4 text-orange-400" />
-                <span>2. Selecciona una de nuestras 4 Salas Oficiales</span>
+              <h2 className="text-sm font-bold text-white">
+                2. Selecciona una sala
               </h2>
-              <span className="text-xs text-orange-400 font-semibold">$35 MXN por persona</span>
+              <span className="text-xs text-zinc-400">$35 MXN por persona / hora</span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -216,21 +191,19 @@ export const BookingPage: React.FC = () => {
           {/* Paso 3: Especificar Integrantes / Miembros Asistentes */}
           <div className="bg-zinc-900/40 border border-zinc-800 p-5 rounded-2xl space-y-4">
             <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 text-sm font-bold text-white">
-                <Users className="w-4 h-4 text-orange-400" />
-                <span>3. ¿Cuántos miembros o personas asistirán?</span>
+              <label className="text-sm font-bold text-white">
+                3. Número de integrantes que asistirán
               </label>
-              <span className="text-xs font-mono px-2 py-0.5 rounded bg-orange-500/10 text-orange-400 border border-orange-500/30">
-                Capacidad máx: {maxCapacidad} músicos
+              <span className="text-xs text-zinc-400">
+                Máximo {maxCapacidad} músicos
               </span>
             </div>
 
             <p className="text-xs text-zinc-400">
-              El costo de la sala se calcula por asistente: <strong>$35 MXN por persona</strong>.
-              (Ejemplo: 4 miembros = $140 MXN por hora).
+              La tarifa es de <strong className="text-zinc-200">$35 MXN por persona por hora</strong>.
             </p>
 
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center gap-4">
               <div className="flex items-center border border-zinc-700 bg-zinc-800 rounded-xl overflow-hidden">
                 <button
                   type="button"
@@ -259,9 +232,9 @@ export const BookingPage: React.FC = () => {
                     key={n}
                     type="button"
                     onClick={() => setNumMiembros(n)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                       numMiembros === n
-                        ? 'bg-orange-500 text-white shadow-md shadow-orange-500/20'
+                        ? 'bg-orange-500 text-white'
                         : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 border border-zinc-700'
                     }`}
                   >
@@ -271,22 +244,21 @@ export const BookingPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="p-3 bg-zinc-800/60 rounded-xl border border-zinc-700/60 flex items-center justify-between text-xs">
-              <span className="text-zinc-300">
-                Subtotal por hora ({numMiembros} × $35 MXN):
+            <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between text-xs">
+              <span className="text-zinc-400">
+                Tarifa por hora ({numMiembros} × $35 MXN):
               </span>
-              <span className="font-bold text-orange-400 text-sm">
-                ${numMiembros * precioPorPersona} MXN / h
+              <span className="font-semibold text-zinc-200">
+                ${numMiembros * precioPorPersona} MXN / hora
               </span>
             </div>
           </div>
 
-          {/* Paso 4: Disponibilidad en Tiempo Real */}
+          {/* Paso 4: Selección de Horario */}
           <div className="bg-zinc-900/40 border border-zinc-800 p-5 rounded-2xl">
             {errorDisponibilidad && (
-              <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{errorDisponibilidad}</span>
+              <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs">
+                {errorDisponibilidad}
               </div>
             )}
 
@@ -309,36 +281,35 @@ export const BookingPage: React.FC = () => {
         {/* Columna Lateral: Resumen de Reserva Sticky */}
         <div className="lg:col-span-1">
           <div className="bg-zinc-900/90 border border-zinc-800 p-6 rounded-2xl sticky top-24 space-y-6 shadow-2xl backdrop-blur">
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-              <h3 className="text-base font-bold text-white">Resumen de tu Cita</h3>
-              <ShieldCheck className="w-4 h-4 text-orange-400" />
+            <div className="border-b border-zinc-800 pb-3">
+              <h3 className="text-base font-bold text-white">Resumen de reservación</h3>
             </div>
 
             <div className="space-y-3.5 text-xs sm:text-sm">
               <div className="flex justify-between items-start">
                 <span className="text-zinc-400">Sala:</span>
-                <span className="font-bold text-white text-right">
+                <span className="font-semibold text-white text-right">
                   {selectedSala ? selectedSala.nombre_sala : 'Cargando...'}
                 </span>
               </div>
 
               <div className="flex justify-between items-center">
-                <span className="text-zinc-400">Asistentes:</span>
-                <span className="text-white font-bold">
+                <span className="text-zinc-400">Integrantes:</span>
+                <span className="text-white font-semibold">
                   {numMiembros} {numMiembros === 1 ? 'persona' : 'personas'}
                 </span>
               </div>
 
               <div className="flex justify-between items-center">
                 <span className="text-zinc-400">Tarifa por persona:</span>
-                <span className="text-zinc-200 font-semibold">
-                  ${precioPorPersona} MXN / persona
+                <span className="text-zinc-200">
+                  ${precioPorPersona} MXN / h
                 </span>
               </div>
 
               <div className="flex justify-between items-center">
                 <span className="text-zinc-400">Fecha:</span>
-                <span className="font-semibold text-white">{selectedDate}</span>
+                <span className="font-medium text-white">{selectedDate}</span>
               </div>
 
               <div className="flex justify-between items-center">
@@ -352,49 +323,40 @@ export const BookingPage: React.FC = () => {
 
               <div className="flex justify-between items-center">
                 <span className="text-zinc-400">Duración:</span>
-                <span className="text-white font-medium">{duration} {duration === 1 ? 'hora' : 'horas'}</span>
+                <span className="text-white font-medium">
+                  {duration} {duration === 1 ? 'hora' : 'horas'}
+                </span>
               </div>
 
               <div className="border-t border-zinc-800 pt-3 flex justify-between items-baseline">
                 <div>
                   <span className="text-sm font-bold text-white block">Total a pagar:</span>
-                  <span className="text-[10px] text-zinc-500">
+                  <span className="text-[11px] text-zinc-500">
                     {numMiembros} pers. × ${precioPorPersona} × {duration} h
                   </span>
                 </div>
-                <span className="text-2xl font-black text-orange-400">${totalPrice} MXN</span>
+                <span className="text-2xl font-black text-white">${totalPrice} MXN</span>
               </div>
             </div>
 
-            {/* Aviso de autenticación */}
             {isAuthenticated ? (
-              <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center gap-2">
-                <UserCheck className="w-4 h-4 shrink-0" />
-                <span className="truncate">
-                  Reservando como <strong>{user?.name || user?.nombre || user?.email}</strong>
-                </span>
-              </div>
+              <p className="text-xs text-zinc-400">
+                Sesión iniciada como <strong className="text-zinc-200">{user?.name || user?.nombre || user?.email}</strong>
+              </p>
             ) : (
-              <div className="p-2.5 rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-300 text-xs flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-orange-400 shrink-0" />
-                <span>Recuerda iniciar sesión o crear tu cuenta antes de pagar.</span>
-              </div>
+              <p className="text-xs text-zinc-400">
+                Se te solicitará iniciar sesión en el siguiente paso para confirmar tu reservación.
+              </p>
             )}
 
             <button
               type="button"
               disabled={startHour === null || !selectedSala}
               onClick={handleContinueToPayment}
-              className="w-full py-3.5 bg-orange-500 hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20 transition-all cursor-pointer text-sm"
+              className="w-full py-3.5 bg-wine-500 hover:bg-wine-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl border border-wine-400/20 flex items-center justify-center shadow-md shadow-black/40 transition-all cursor-pointer text-sm"
             >
-              <span>{isAuthenticated ? 'Continuar al Pago y Confirmación' : 'Crear Cuenta / Ingresar para Reservar'}</span>
-              <ArrowRight className="w-4 h-4" />
+              {isAuthenticated ? 'Continuar al pago' : 'Continuar'}
             </button>
-
-            <div className="text-[11px] text-zinc-500 text-center space-y-1">
-              <p>✓ Validación en tiempo real contra solapamientos.</p>
-              <p>✓ Paga con tarjeta o transferencia bancaria SPEI.</p>
-            </div>
           </div>
         </div>
       </div>

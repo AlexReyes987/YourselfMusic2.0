@@ -32,9 +32,9 @@ export const AdminSidebar: React.FC = () => {
   };
 
   return (
-    <aside className="w-64 border-r border-[#2a3142] bg-[#181b24] flex flex-col h-full shrink-0">
+    <aside className="w-64 border-r border-zinc-800 bg-[#121215] flex flex-col h-full shrink-0">
       {/* Encabezado del Sidebar */}
-      <div className="p-5 border-b border-[#2a3142] flex items-center justify-between">
+      <div className="p-5 border-b border-zinc-800 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-orange-500/20 border border-orange-500/30 flex items-center justify-center text-orange-400 font-black text-lg">
             YM
@@ -84,7 +84,7 @@ export const AdminSidebar: React.FC = () => {
       </nav>
 
       {/* Footer del sidebar con info de admin y logout */}
-      <div className="p-4 border-t border-[#2a3142] space-y-3 bg-[#13161e]">
+      <div className="p-4 border-t border-zinc-800 space-y-3 bg-[#0e0e11]">
         {user && (
           <div className="flex items-center gap-2 px-2 py-1">
             <ShieldCheck className="w-4 h-4 text-orange-400 shrink-0" />

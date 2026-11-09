@@ -12,7 +12,7 @@ export const AdminSettingsPage: React.FC = () => {
       </div>
 
       <div className="space-y-4">
-        <div className="p-5 rounded-2xl bg-[#181b24] border border-[#2a3142] space-y-3">
+        <div className="p-5 rounded-2xl bg-[#141417] border border-zinc-800 space-y-3">
           <div className="flex items-center gap-2 text-white font-bold text-sm">
             <Clock className="w-4 h-4 text-orange-400" />
             <span>Horarios de Operación</span>
@@ -22,7 +22,7 @@ export const AdminSettingsPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="p-5 rounded-2xl bg-[#181b24] border border-[#2a3142] space-y-3">
+        <div className="p-5 rounded-2xl bg-[#141417] border border-zinc-800 space-y-3">
           <div className="flex items-center gap-2 text-white font-bold text-sm">
             <Sliders className="w-4 h-4 text-orange-400" />
             <span>Reglas de Solapamiento y Cancelación</span>
@@ -32,7 +32,7 @@ export const AdminSettingsPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="p-5 rounded-2xl bg-[#181b24] border border-[#2a3142] space-y-3">
+        <div className="p-5 rounded-2xl bg-[#141417] border border-zinc-800 space-y-3">
           <div className="flex items-center gap-2 text-white font-bold text-sm">
             <MapPin className="w-4 h-4 text-orange-400" />
             <span>Ubicación y Datos de Contacto</span>

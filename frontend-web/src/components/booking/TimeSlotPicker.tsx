@@ -1,5 +1,4 @@
 import React from 'react';
-import { Clock, AlertCircle, CheckCircle, Sparkles, Loader2 } from 'lucide-react';
 import { RangoLibre } from '../../types';
 
 interface TimeSlotPickerProps {
@@ -19,8 +18,8 @@ export const TimeSlotPicker: React.FC<TimeSlotPickerProps> = ({
   onSelectSlot,
   horasLibres,
   rangosLibres,
-  horaApertura = '10:00:00',
-  horaCierre = '22:00:00',
+  horaApertura = '12:00:00',
+  horaCierre = '23:00:00',
   isLoading = false,
 }) => {
   const aperturaHour = parseInt(horaApertura.split(':')[0], 10);
@@ -44,39 +43,25 @@ export const TimeSlotPicker: React.FC<TimeSlotPickerProps> = ({
   return (
     <div className="space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800 pb-3">
-        <div className="flex items-center gap-2 text-sm font-bold text-white">
-          <Clock className="w-4 h-4 text-orange-400" />
-          <span>Disponibilidad en Tiempo Real</span>
-        </div>
+        <span className="text-sm font-bold text-white">4. Selecciona el horario</span>
 
         {isLoading ? (
-          <div className="flex items-center gap-1.5 text-xs text-orange-400">
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            <span>Consultando Supabase...</span>
-          </div>
+          <span className="text-xs text-zinc-400">Consultando horarios...</span>
         ) : (
-          <div className="flex items-center gap-3 text-xs">
-            <span className="flex items-center gap-1 text-emerald-400 font-medium">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              {horasLibres.length} horas libres
-            </span>
-          </div>
+          <span className="text-xs text-zinc-400">
+            {horasLibres.length} {horasLibres.length === 1 ? 'hora disponible' : 'horas disponibles'}
+          </span>
         )}
       </div>
 
-      {/* Rangos Libres Sugeridos */}
+      {/* Horarios disponibles de forma natural y discreta */}
       {rangosLibres.length > 0 && !isLoading && (
-        <div className="p-3 rounded-xl bg-orange-500/5 border border-orange-500/20 text-xs text-zinc-300 flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1 text-orange-400 font-semibold">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Rangos continuos libres:</span>
-          </div>
+        <div className="text-xs text-zinc-400 flex flex-wrap items-center gap-1.5">
+          <span>Horarios disponibles hoy:</span>
           {rangosLibres.map((r, idx) => (
-            <span
-              key={idx}
-              className="px-2 py-0.5 rounded-md bg-zinc-800 border border-zinc-700 text-white font-mono text-[11px]"
-            >
-              {r.hora_inicio.slice(0, 5)} - {r.hora_fin.slice(0, 5)}
+            <span key={idx} className="text-zinc-200 font-medium">
+              {r.hora_inicio.slice(0, 5)} a {r.hora_fin.slice(0, 5)} hrs
+              {idx < rangosLibres.length - 1 ? ',' : ''}
             </span>
           ))}
         </div>
@@ -84,8 +69,8 @@ export const TimeSlotPicker: React.FC<TimeSlotPickerProps> = ({
 
       {/* Cuadrícula de Bloques Horarios */}
       <div className="space-y-2">
-        <label className="text-xs font-semibold text-zinc-300 block">
-          1. Selecciona la hora de inicio:
+        <label className="text-xs font-medium text-zinc-300 block">
+          Hora de inicio:
         </label>
 
         {isLoading ? (
@@ -104,7 +89,6 @@ export const TimeSlotPicker: React.FC<TimeSlotPickerProps> = ({
             {allHours.map((hour) => {
               const isFree = horasLibres.includes(hour);
 
-              // Determinar si esta hora está dentro del bloque seleccionado [start, start + duration)
               const isInSelectedBlock =
                 selectedStartHour !== null &&
                 hour >= selectedStartHour &&
@@ -118,7 +102,6 @@ export const TimeSlotPicker: React.FC<TimeSlotPickerProps> = ({
                   type="button"
                   disabled={!isFree}
                   onClick={() => {
-                    // Si el start seleccionado no puede cubrir la duración actual, ajustar duración
                     const validDuration = canBookDuration(hour, selectedDuration)
                       ? selectedDuration
                       : 1;
@@ -128,15 +111,21 @@ export const TimeSlotPicker: React.FC<TimeSlotPickerProps> = ({
                     !isFree
                       ? 'border-zinc-800 bg-zinc-900/40 text-zinc-600 cursor-not-allowed line-through'
                       : isStartOfSelected
-                      ? 'border-orange-500 bg-orange-500 text-white shadow-lg shadow-orange-500/20 ring-2 ring-orange-400'
+                      ? 'border-orange-500 bg-orange-500 text-white shadow-lg shadow-orange-500/20'
                       : isInSelectedBlock
                       ? 'border-orange-500/50 bg-orange-500/20 text-orange-200'
-                      : 'border-zinc-800 bg-zinc-900/80 text-zinc-200 hover:border-orange-500/50 hover:bg-zinc-800 cursor-pointer'
+                      : 'border-zinc-800 bg-zinc-900/80 text-zinc-200 hover:border-zinc-600 hover:bg-zinc-800 cursor-pointer'
                   }`}
                 >
                   <span className="font-mono text-xs">{hour}:00</span>
-                  <span className="text-[9px] font-normal tracking-tight">
-                    {isFree ? (isStartOfSelected ? 'Inicio' : isInSelectedBlock ? 'Reservado' : 'Disponible') : 'Ocupada'}
+                  <span className="text-[10px] font-normal tracking-tight">
+                    {isFree
+                      ? isStartOfSelected
+                        ? 'Inicio'
+                        : isInSelectedBlock
+                        ? 'Seleccionado'
+                        : 'Disponible'
+                      : 'Ocupado'}
                   </span>
                 </button>
               );
@@ -147,15 +136,14 @@ export const TimeSlotPicker: React.FC<TimeSlotPickerProps> = ({
 
       {/* Selector de Duración (1 a 4 horas) */}
       <div className="space-y-2 pt-2">
-        <label className="text-xs font-semibold text-zinc-300 block">
-          2. Duración del ensayo (bloques de 1 hora):
+        <label className="text-xs font-medium text-zinc-300 block">
+          Duración del ensayo:
         </label>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {[1, 2, 3, 4].map((dur) => {
-            const isPossible = selectedStartHour !== null
-              ? canBookDuration(selectedStartHour, dur)
-              : true;
+            const isPossible =
+              selectedStartHour !== null ? canBookDuration(selectedStartHour, dur) : true;
 
             const isSelected = selectedDuration === dur;
 
@@ -165,36 +153,37 @@ export const TimeSlotPicker: React.FC<TimeSlotPickerProps> = ({
                 type="button"
                 disabled={!isPossible}
                 onClick={() => selectedStartHour && onSelectSlot(selectedStartHour, dur)}
-                className={`py-2 px-3 rounded-xl text-xs font-semibold border transition-all flex items-center justify-center gap-1.5 ${
+                className={`py-2.5 px-3 rounded-xl text-xs font-semibold border transition-all flex items-center justify-center ${
                   !isPossible
                     ? 'border-zinc-800 bg-zinc-900/40 text-zinc-600 cursor-not-allowed line-through'
                     : isSelected
-                    ? 'border-orange-500 bg-orange-500/20 text-orange-400 ring-1 ring-orange-500 font-bold'
+                    ? 'border-orange-500 bg-orange-500/15 text-orange-400 font-bold'
                     : 'border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-zinc-700 hover:text-white cursor-pointer'
                 }`}
               >
-                {isSelected ? <CheckCircle className="w-3.5 h-3.5" /> : null}
-                <span>{dur} {dur === 1 ? 'Hora' : 'Horas'}</span>
+                <span>
+                  {dur} {dur === 1 ? 'hora' : 'horas'}
+                </span>
               </button>
             );
           })}
         </div>
 
         {selectedStartHour !== null && !canBookDuration(selectedStartHour, selectedDuration) && (
-          <p className="text-[11px] text-amber-400 flex items-center gap-1 pt-1">
-            <AlertCircle className="w-3.5 h-3.5" />
-            <span>La duración seleccionada se solapa con una reservación posterior. Selecciona un bloque menor.</span>
+          <p className="text-xs text-amber-400 pt-1">
+            La duración seleccionada coincide con un horario ocupado posterior. Elige una duración menor.
           </p>
         )}
       </div>
 
       {/* Resumen del bloque */}
       {selectedStartHour !== null && (
-        <div className="p-3 rounded-xl bg-zinc-900/80 border border-zinc-800 flex items-center justify-between text-xs text-zinc-300">
-          <span className="text-zinc-400">Horario definido:</span>
-          <span className="font-mono font-bold text-orange-400">
-            {String(selectedStartHour).padStart(2, '0')}:00 -{' '}
-            {String(selectedStartHour + selectedDuration).padStart(2, '0')}:00 ({selectedDuration} hrs)
+        <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between text-xs text-zinc-400">
+          <span>Horario seleccionado:</span>
+          <span className="font-medium text-zinc-200">
+            {String(selectedStartHour).padStart(2, '0')}:00 a{' '}
+            {String(selectedStartHour + selectedDuration).padStart(2, '0')}:00 hrs ({selectedDuration}{' '}
+            {selectedDuration === 1 ? 'hora' : 'horas'})
           </span>
         </div>
       )}

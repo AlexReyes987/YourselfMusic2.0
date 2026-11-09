@@ -179,7 +179,8 @@ export const adminSupabaseService = {
           *,
           usuarios ( usuario_id, nombre, email, telefono ),
           salas ( sala_id, nombre_sala, precio_por_hora, capacidad ),
-          pagos ( pago_id, monto, metodo_pago, transaccion_id, fecha_pago, concepto_pago )
+          pagos ( pago_id, monto, metodo_pago, transaccion_id, fecha_pago, concepto_pago ),
+          cancelaciones ( cancelacion_id, tarifa_multa, monto_reembolsado, es_mismo_dia, fecha_cancelacion )
         `)
         .order('fecha_reservacion', { ascending: false })
         .order('hora_inicio', { ascending: true });

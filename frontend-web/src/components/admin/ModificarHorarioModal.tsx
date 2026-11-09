@@ -82,9 +82,9 @@ export const ModificarHorarioModal: React.FC<ModificarHorarioModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md bg-[#181b24] border border-[#2a3142] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+      <div className="w-full max-w-md bg-[#141417] border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="p-4 border-b border-[#2a3142] flex items-center justify-between">
+        <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Clock className="w-5 h-5 text-orange-400" />
             <div>
@@ -103,7 +103,7 @@ export const ModificarHorarioModal: React.FC<ModificarHorarioModalProps> = ({
         </div>
 
         {/* Resumen de cita actual */}
-        <div className="bg-[#1f2430]/60 p-3.5 mx-4 mt-4 rounded-xl border border-[#2a3142] text-xs space-y-1">
+        <div className="bg-[#1b1b20]/60 p-3.5 mx-4 mt-4 rounded-xl border border-zinc-800 text-xs space-y-1">
           <div className="text-zinc-400">
             Cliente: <strong className="text-white">{clienteNombre}</strong>
           </div>
@@ -133,7 +133,7 @@ export const ModificarHorarioModal: React.FC<ModificarHorarioModalProps> = ({
             <select
               value={salaId}
               onChange={(e) => setSalaId(Number(e.target.value))}
-              className="w-full px-3 py-2 rounded-xl bg-[#1f2430] border border-[#2a3142] text-xs text-white focus:outline-none focus:border-orange-500"
+              className="w-full px-3 py-2 rounded-xl bg-[#1b1b20] border border-zinc-800 text-xs text-white focus:outline-none focus:border-orange-500"
             >
               {ROOMS.map((r) => (
                 <option key={r.id} value={r.id}>
@@ -154,7 +154,7 @@ export const ModificarHorarioModal: React.FC<ModificarHorarioModalProps> = ({
               value={fecha}
               onChange={(e) => setFecha(e.target.value)}
               required
-              className="w-full px-3 py-2 rounded-xl bg-[#1f2430] border border-[#2a3142] text-xs text-white focus:outline-none focus:border-orange-500"
+              className="w-full px-3 py-2 rounded-xl bg-[#1b1b20] border border-zinc-800 text-xs text-white focus:outline-none focus:border-orange-500"
             />
           </div>
 
@@ -168,7 +168,7 @@ export const ModificarHorarioModal: React.FC<ModificarHorarioModalProps> = ({
               <select
                 value={horaInicio}
                 onChange={(e) => setHoraInicio(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-xl bg-[#1f2430] border border-[#2a3142] text-xs text-white focus:outline-none focus:border-orange-500"
+                className="w-full px-3 py-2 rounded-xl bg-[#1b1b20] border border-zinc-800 text-xs text-white focus:outline-none focus:border-orange-500"
               >
                 {HOURS.filter((h) => h <= 21).map((h) => (
                   <option key={h} value={h}>
@@ -185,7 +185,7 @@ export const ModificarHorarioModal: React.FC<ModificarHorarioModalProps> = ({
               <select
                 value={duracion}
                 onChange={(e) => setDuracion(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-xl bg-[#1f2430] border border-[#2a3142] text-xs text-white focus:outline-none focus:border-orange-500"
+                className="w-full px-3 py-2 rounded-xl bg-[#1b1b20] border border-zinc-800 text-xs text-white focus:outline-none focus:border-orange-500"
               >
                 <option value={1}>1 hora (hasta {horaInicio + 1}:00)</option>
                 <option value={2}>2 horas (hasta {horaInicio + 2}:00)</option>
@@ -200,7 +200,7 @@ export const ModificarHorarioModal: React.FC<ModificarHorarioModalProps> = ({
           </div>
 
           {/* Botones */}
-          <div className="pt-2 flex items-center justify-end gap-2 border-t border-[#2a3142]">
+          <div className="pt-2 flex items-center justify-end gap-2 border-t border-zinc-800">
             <button
               type="button"
               onClick={onClose}

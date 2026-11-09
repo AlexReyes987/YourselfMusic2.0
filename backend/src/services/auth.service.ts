@@ -22,8 +22,31 @@ export class AuthService {
     }
 
     const digitsOnly = cleanPhone.replace(/\D/g, '');
-    if (!cleanPhone || digitsOnly.length < 10) {
-      throw { status: 400, message: 'El teléfono celular debe tener al menos 10 dígitos.' };
+    if (!cleanPhone || digitsOnly.length !== 10) {
+      throw {
+        status: 400,
+        message: 'El teléfono celular debe tener exactamente 10 dígitos (ej. 6181234567).',
+      };
+    }
+
+    // Validar que inicie con un prefijo LADA mexicano real (Plan Nacional de Numeración IFT, ej. 618 Durango)
+    const regexPrefijoMexicano =
+      /^(?:33|55|56|81|22[0-9]|23[1-8]|24[1-9]|27[1-9]|28[1-8]|29[467]|31[1-79]|32[1-9]|34[1-9]|35[1-9]|37[1-8]|38[1-9]|39[1-5]|41[1-9]|42[1-9]|43[1-8]|44[1-9]|45[1-9]|46[1-9]|47[1-9]|48[1-9]|49[2-9]|588|59[1-79]|61[2-68]|62[124-9]|63[1-9]|64[1-9]|65[1-3689]|66[1-57-9]|67[1-7]|68[67]|69[4-8]|71[1-9]|72[1-9]|73[1-9]|74[1-9]|75[1-9]|76[1-9]|77[1-9]|78[1-69]|79[17]|82[13-689]|83[1-6]|84[124-6]|86[1246-9]|87[1-378]|89[12479]|91[346-9]|92[1-4]|93[2-46-8]|95[1348]|96[1-9]|97[12]|98[1-8]|99[1-9])/;
+
+    if (!regexPrefijoMexicano.test(digitsOnly)) {
+      throw {
+        status: 400,
+        message: `El prefijo "${digitsOnly.slice(0, 3)}" no corresponde a una clave LADA telefónica mexicana válida (ej. 618 para Durango, 871, 55, 33, 81).`,
+      };
+    }
+
+    const esLada2 = /^(?:33|55|56|81)/.test(digitsOnly);
+    const restoSuscriptor = esLada2 ? digitsOnly.slice(2) : digitsOnly.slice(3);
+    if (/^(\d)\1+$/.test(restoSuscriptor)) {
+      throw {
+        status: 400,
+        message: 'Por favor ingresa un número telefónico real (no se permiten secuencias de dígitos idénticos).',
+      };
     }
 
     if (!data.password || data.password.length < 6) {

@@ -150,6 +150,120 @@ export class ReservationController {
         res.status(error.status).json({
           success: false,
           message: error.message,
+          adeudo: error.adeudo,
+        });
+        return;
+      }
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/reservaciones/mi-adeudo
+   * Obtiene el resumen de adeudos pendientes por multas de cancelación tardía ($105 MXN) del usuario autenticado.
+   */
+  static async getMiAdeudo(req: Request, res: Response, next: NextFunction) {
+    try {
+      const usuarioId = req.user?.id ?? req.query.usuario_id;
+      if (!usuarioId) {
+        res.status(401).json({
+          success: false,
+          message: 'Se requiere autenticación para consultar el estado de cuenta.',
+        });
+        return;
+      }
+
+      const resumen = await DatabaseService.obtenerAdeudosMultasUsuario(String(usuarioId));
+      res.status(200).json({
+        success: true,
+        data: resumen,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/reservaciones/:id/cancelar
+   * Cancela una reservación aplicando automáticamente la multa fija de $105 MXN
+   * si se cancela el mismo día del ensayo o 1 día antes.
+   */
+  static async cancelar(req: Request, res: Response, next: NextFunction) {
+    try {
+      const reservacionId = req.params.id;
+      const usuarioId = req.user?.id ?? req.body.usuario_id;
+      const esAdmin = req.user?.role === 'admin' || req.body.es_admin === true;
+      const motivo = req.body.motivo || 'Cancelación solicitada por el cliente';
+
+      if (!usuarioId && !esAdmin) {
+        res.status(401).json({
+          success: false,
+          message: 'Debes iniciar sesión para cancelar tu reservación.',
+        });
+        return;
+      }
+
+      const resultado = await DatabaseService.cancelarReservacionConPolitica({
+        reservacion_id: String(reservacionId),
+        usuario_id: usuarioId || 1,
+        es_admin: esAdmin,
+        motivo,
+      });
+
+      const d = resultado.desglose_multa;
+      const mensaje = d.aplica_multa
+        ? d.adeudo_pendiente > 0
+          ? `Reservación cancelada. Aplica multa de $105.00 MXN (${d.es_mismo_dia ? 'mismo día' : '1 día antes'}). Se retuvieron $${d.monto_retenido} MXN y queda un saldo pendiente de $${d.adeudo_pendiente} MXN.`
+          : `Reservación cancelada. Aplica multa de $105.00 MXN (${d.es_mismo_dia ? 'mismo día' : '1 día antes'}), cubierta con tu pago previo. Monto a reembolsar a tu favor: $${d.monto_reembolsado} MXN.`
+        : `Reservación cancelada con 2 o más días de anticipación (Sin multa: $0 MXN). Monto a reembolsar: $${d.monto_reembolsado} MXN.`;
+
+      res.status(200).json({
+        success: true,
+        message: mensaje,
+        data: resultado,
+      });
+    } catch (error: any) {
+      if (error.status) {
+        res.status(error.status).json({
+          success: false,
+          message: error.message,
+        });
+        return;
+      }
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/reservaciones/:id/liquidar-multa
+   * Registra la liquidación de una multa pendiente por cancelación tardía.
+   */
+  static async liquidarMulta(req: Request, res: Response, next: NextFunction) {
+    try {
+      const reservacionId = req.params.id;
+      const monto = Number(req.body.monto || 105);
+      const metodoPago = req.body.metodo_pago || 'transfer';
+      const transaccionId = req.body.transaccion_id;
+      const usuarioId = req.user?.id ?? req.body.usuario_id;
+
+      const pago = await DatabaseService.liquidarMultaCancelacion({
+        reservacion_id: String(reservacionId),
+        monto,
+        metodo_pago: metodoPago,
+        transaccion_id: transaccionId,
+        usuario_id: usuarioId,
+      });
+
+      res.status(200).json({
+        success: true,
+        message: `Multa de $${monto} MXN liquidada exitosamente. Tu cuenta ha quedado libre de adeudos.`,
+        data: pago,
+      });
+    } catch (error: any) {
+      if (error.status) {
+        res.status(error.status).json({
+          success: false,
+          message: error.message,
         });
         return;
       }

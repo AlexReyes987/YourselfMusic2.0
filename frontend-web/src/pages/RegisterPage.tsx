@@ -1,19 +1,117 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { User, Mail, Phone, Lock, UserPlus, AlertCircle, CheckCircle2, ArrowRight, Loader2 } from 'lucide-react';
+import { Loader2, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/authService';
+
+// Catálogo de prefijos telefónicos mexicanos válidos (Plan Nacional de Numeración IFT México)
+const LADAS_2_DIGITOS: Record<string, string> = {
+  '33': 'Guadalajara, Jal.',
+  '55': 'Ciudad de México',
+  '56': 'Ciudad de México / Área Metropolitana',
+  '81': 'Monterrey, N.L.',
+};
+
+const LADAS_DESTACADAS_3_DIGITOS: Record<string, string> = {
+  '618': 'Durango, Dgo.',
+  '871': 'Gómez Palacio / Lerdo, Dgo.',
+  '671': 'Durango',
+  '672': 'Durango / Sinaloa',
+  '673': 'Sinaloa',
+  '674': 'Santiago Papasquiaro, Dgo.',
+  '675': 'Vicente Guerrero, Dgo.',
+  '676': 'Guadalupe Victoria, Dgo.',
+  '677': 'Nuevo Ideal / Canatlán, Dgo.',
+  '667': 'Culiacán, Sin.',
+  '669': 'Mazatlán, Sin.',
+  '492': 'Zacatecas, Zac.',
+  '449': 'Aguascalientes, Ags.',
+  '614': 'Chihuahua, Chih.',
+  '656': 'Ciudad Juárez, Chih.',
+  '844': 'Saltillo, Coah.',
+  '442': 'Querétaro, Qro.',
+  '477': 'León, Gto.',
+  '444': 'San Luis Potosí, S.L.P.',
+  '222': 'Puebla, Pue.',
+  '664': 'Tijuana, B.C.',
+  '999': 'Mérida, Yuc.',
+  '998': 'Cancún, Q.R.',
+};
+
+// Expresión regular de prefijos NIR oficiales de México (2 y 3 dígitos del Plan Nacional IFT)
+const REGEX_PREFIJO_MEXICANO =
+  /^(?:33|55|56|81|22[0-9]|23[1-8]|24[1-9]|27[1-9]|28[1-8]|29[467]|31[1-79]|32[1-9]|34[1-9]|35[1-9]|37[1-8]|38[1-9]|39[1-5]|41[1-9]|42[1-9]|43[1-8]|44[1-9]|45[1-9]|46[1-9]|47[1-9]|48[1-9]|49[2-9]|588|59[1-79]|61[2-68]|62[124-9]|63[1-9]|64[1-9]|65[1-3689]|66[1-57-9]|67[1-7]|68[67]|69[4-8]|71[1-9]|72[1-9]|73[1-9]|74[1-9]|75[1-9]|76[1-9]|77[1-9]|78[1-69]|79[17]|82[13-689]|83[1-6]|84[124-6]|86[1246-9]|87[1-378]|89[12479]|91[346-9]|92[1-4]|93[2-46-8]|95[1348]|96[1-9]|97[12]|98[1-8]|99[1-9])/;
+
+export function validarTelefonoMexicano(telefonoRaw: string): {
+  valido: boolean;
+  lada?: string;
+  region?: string;
+  error?: string;
+} {
+  const digits = telefonoRaw.replace(/\D/g, '');
+
+  if (digits.length === 0) {
+    return { valido: false, error: 'Ingresa un número telefónico de 10 dígitos.' };
+  }
+
+  if (digits.length >= 3 && !REGEX_PREFIJO_MEXICANO.test(digits)) {
+    return {
+      valido: false,
+      error: `El prefijo "${digits.slice(0, 3)}" no corresponde a una clave LADA válida de México (ej. 618, 55, 33, 81).`,
+    };
+  }
+
+  if (digits.length !== 10) {
+    return {
+      valido: false,
+      error: 'El teléfono debe tener 10 dígitos con prefijo mexicano (ej. 6181234567).',
+    };
+  }
+
+  if (!REGEX_PREFIJO_MEXICANO.test(digits)) {
+    return {
+      valido: false,
+      error: 'El número debe iniciar con un prefijo telefónico mexicano válido (ej. 618).',
+    };
+  }
+
+  const lada2 = digits.slice(0, 2);
+  const lada3 = digits.slice(0, 3);
+  const esLada2 = Boolean(LADAS_2_DIGITOS[lada2]);
+  const ladaDetectada = esLada2 ? lada2 : lada3;
+  const restoNumero = esLada2 ? digits.slice(2) : digits.slice(3);
+
+  if (/^(\d)\1+$/.test(restoNumero)) {
+    return {
+      valido: false,
+      error: 'Ingresa un número telefónico válido.',
+    };
+  }
+
+  const region =
+    LADAS_2_DIGITOS[lada2] ||
+    LADAS_DESTACADAS_3_DIGITOS[lada3] ||
+    'México';
+
+  return {
+    valido: true,
+    lada: ladaDetectada,
+    region,
+  };
+}
 
 export const RegisterPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { login } = useAuth();
 
-  const state = location.state as {
-    from?: string;
-    bookingData?: any;
-    message?: string;
-  } | undefined;
+  const state = location.state as
+    | {
+        from?: string;
+        bookingData?: any;
+        message?: string;
+      }
+    | undefined;
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -21,14 +119,18 @@ export const RegisterPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Solo permitir dígitos y máximo 10 caracteres
     const val = e.target.value.replace(/\D/g, '').slice(0, 10);
     setPhone(val);
   };
+
+  const validacionTelEnVivo = phone.length >= 3 ? validarTelefonoMexicano(phone) : null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,30 +140,33 @@ export const RegisterPage: React.FC = () => {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPhone = phone.trim();
 
-    // Validaciones estrictas en el cliente
     if (!cleanName || cleanName.length < 3) {
-      setErrorMessage('El nombre del titular o de la banda debe tener al menos 3 caracteres.');
+      setErrorMessage('El nombre debe tener al menos 3 caracteres.');
       return;
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!cleanEmail || !emailRegex.test(cleanEmail)) {
-      setErrorMessage('Por favor introduce un correo electrónico válido (ej. banda@correo.com).');
+      setErrorMessage('Ingresa un correo electrónico válido.');
       return;
     }
 
-    if (cleanPhone.length !== 10) {
-      setErrorMessage('El teléfono de contacto debe tener exactamente 10 dígitos (ej. 5512345678).');
+    const checkTel = validarTelefonoMexicano(cleanPhone);
+    if (!checkTel.valido) {
+      setErrorMessage(
+        checkTel.error ||
+          'El número de teléfono debe iniciar con un prefijo mexicano válido (ej. 618) y tener 10 dígitos.'
+      );
       return;
     }
 
     if (!password || password.length < 6) {
-      setErrorMessage('La contraseña debe contener un mínimo de 6 caracteres.');
+      setErrorMessage('La contraseña debe tener al menos 6 caracteres.');
       return;
     }
 
     if (password !== confirmPassword) {
-      setErrorMessage('Las contraseñas no coinciden. Por favor verifícalas.');
+      setErrorMessage('Las contraseñas no coinciden.');
       return;
     }
 
@@ -75,18 +180,18 @@ export const RegisterPage: React.FC = () => {
         password,
       });
 
-      // Iniciar sesión automáticamente tras el registro exitoso
       login(response.token, response.user);
 
-      // Revisar si había una reservación pendiente
-      const savedBooking = state?.bookingData || (() => {
-        try {
-          const raw = sessionStorage.getItem('pendingBooking');
-          return raw ? JSON.parse(raw) : null;
-        } catch {
-          return null;
-        }
-      })();
+      const savedBooking =
+        state?.bookingData ||
+        (() => {
+          try {
+            const raw = sessionStorage.getItem('pendingBooking');
+            return raw ? JSON.parse(raw) : null;
+          } catch {
+            return null;
+          }
+        })();
 
       if (savedBooking) {
         navigate('/payment', { state: savedBooking, replace: true });
@@ -100,7 +205,7 @@ export const RegisterPage: React.FC = () => {
         err.response?.data?.message ||
         err.response?.data?.error?.message ||
         err.message ||
-        'Ocurrió un error al registrar la cuenta. Inténtalo nuevamente.';
+        'No fue posible crear la cuenta. Inténtalo nuevamente.';
       setErrorMessage(serverMessage);
     } finally {
       setIsLoading(false);
@@ -110,127 +215,135 @@ export const RegisterPage: React.FC = () => {
   return (
     <div className="min-h-[85vh] flex items-center justify-center px-4 sm:px-6 lg:px-8 py-12">
       <div className="max-w-md w-full space-y-6">
-        {/* Banner de aviso si viene de intentar reservar */}
-
-
-        {/* Tarjeta de Registro */}
-        <div className="bg-zinc-900/60 border border-zinc-800 rounded-3xl p-6 sm:p-8 backdrop-blur-xl shadow-2xl space-y-6">
-          <div className="text-center space-y-2">
-            <h2 className="text-2xl font-black text-white tracking-tight">Crear Cuenta de Cliente</h2>
+        <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6 sm:p-8 shadow-2xl space-y-6">
+          <div className="space-y-1.5">
+            <h2 className="text-2xl font-bold text-white tracking-tight">Crear cuenta</h2>
             <p className="text-xs text-zinc-400">
-              Regístrate en YourSelf Music para reservar salas oficiales de ensayo y gestionar tus ensayos.
+              Completa tus datos para reservar salas de ensayo en YourSelf Music.
             </p>
           </div>
 
           {errorMessage && (
-            <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center gap-2.5 text-xs text-red-300">
-              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-              <span>{errorMessage}</span>
+            <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-300">
+              {errorMessage}
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                Nombre Completo o Nombre de la Banda <span className="text-orange-400">*</span>
+              <label className="block text-xs font-medium text-zinc-300 mb-1.5">
+                Nombre completo o nombre de la banda
               </label>
-              <div className="relative">
-                <User className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  required
-                  placeholder="Ej. Los Nocturnos / Carlos Pérez"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-zinc-800/80 border border-zinc-700 rounded-xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-colors"
-                />
-              </div>
+              <input
+                type="text"
+                required
+                placeholder="Ej. Carlos Pérez"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full px-4 py-2.5 bg-zinc-800/80 border border-zinc-700 rounded-xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-colors"
+              />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                Correo Electrónico <span className="text-orange-400">*</span>
+              <label className="block text-xs font-medium text-zinc-300 mb-1.5">
+                Correo electrónico
               </label>
-              <div className="relative">
-                <Mail className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="email"
-                  required
-                  placeholder="banda@ejemplo.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-zinc-800/80 border border-zinc-700 rounded-xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-colors"
-                />
-              </div>
+              <input
+                type="email"
+                required
+                placeholder="correo@ejemplo.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-4 py-2.5 bg-zinc-800/80 border border-zinc-700 rounded-xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-colors"
+              />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                Teléfono Celular (10 dígitos) <span className="text-orange-400">*</span>
+              <label className="block text-xs font-medium text-zinc-300 mb-1.5">
+                Teléfono celular (10 dígitos)
               </label>
-              <div className="relative">
-                <Phone className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="tel"
-                  required
-                  placeholder="5512345678"
-                  value={phone}
-                  onChange={handlePhoneChange}
-                  className="w-full pl-10 pr-4 py-2.5 bg-zinc-800/80 border border-zinc-700 rounded-xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-colors"
-                />
-              </div>
-              <span className="text-[10px] text-zinc-500 mt-1 block">
-                {phone.length}/10 dígitos requeridos para validación de reservas y contacto de emergencia.
-              </span>
+              <input
+                type="tel"
+                inputMode="numeric"
+                required
+                placeholder="6181234567"
+                value={phone}
+                onChange={handlePhoneChange}
+                className={`w-full px-4 py-2.5 bg-zinc-800/80 border rounded-xl text-sm text-white font-mono placeholder-zinc-500 focus:outline-none transition-colors ${
+                  phone.length >= 3 && validacionTelEnVivo && !validacionTelEnVivo.valido && phone.length === 10
+                    ? 'border-red-500/70 focus:border-red-500'
+                    : validacionTelEnVivo?.valido
+                    ? 'border-emerald-500/60 focus:border-emerald-500'
+                    : 'border-zinc-700 focus:border-orange-500'
+                }`}
+              />
+              {phone.length >= 3 && validacionTelEnVivo && !REGEX_PREFIJO_MEXICANO.test(phone) && (
+                <p className="mt-1 text-[11px] text-red-400">
+                  Ingresa un número con clave LADA válida de México (ej. 618).
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                  Contraseña <span className="text-orange-400">*</span>
+                <label className="block text-xs font-medium text-zinc-300 mb-1.5">
+                  Contraseña
                 </label>
                 <div className="relative">
-                  <Lock className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     required
-                    placeholder="Mín. 6 car."
+                    placeholder="Mínimo 6 caracteres"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-zinc-800/80 border border-zinc-700 rounded-xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-colors"
+                    className="w-full pl-4 pr-10 py-2.5 bg-zinc-800/80 border border-zinc-700 rounded-xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-colors"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    tabIndex={-1}
+                    title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                  Confirmar Contraseña <span className="text-orange-400">*</span>
+                <label className="block text-xs font-medium text-zinc-300 mb-1.5">
+                  Confirmar contraseña
                 </label>
                 <div className="relative">
-                  <Lock className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
-                    type="password"
+                    type={showConfirmPassword ? 'text' : 'password'}
                     required
-                    placeholder="Repite la pass"
+                    placeholder="Repite tu contraseña"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-zinc-800/80 border border-zinc-700 rounded-xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-colors"
+                    className="w-full pl-4 pr-10 py-2.5 bg-zinc-800/80 border border-zinc-700 rounded-xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-colors"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword((prev) => !prev)}
+                    tabIndex={-1}
+                    title={showConfirmPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                  >
+                    {showConfirmPassword ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
                 </div>
               </div>
-            </div>
-
-            <div className="pt-2 text-[11px] text-zinc-400 flex items-start gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-              <span>
-                Tu cuenta quedará registrada y guardada de forma segura en nuestra base de datos.
-              </span>
             </div>
 
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full mt-2 py-3 px-4 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20 cursor-pointer"
+              className="w-full mt-2 py-3 px-4 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               {isLoading ? (
                 <>
@@ -238,24 +351,20 @@ export const RegisterPage: React.FC = () => {
                   <span>Creando cuenta...</span>
                 </>
               ) : (
-                <>
-                  <UserPlus className="w-4 h-4" />
-                  <span>Crear Cuenta y Continuar</span>
-                </>
+                <span>Crear cuenta</span>
               )}
             </button>
           </form>
 
           <div className="pt-4 border-t border-zinc-800/80 text-center">
             <p className="text-xs text-zinc-400">
-              ¿Ya tienes una cuenta creada?{' '}
+              ¿Ya tienes una cuenta?{' '}
               <Link
                 to="/login"
                 state={state}
-                className="font-bold text-orange-400 hover:text-orange-300 inline-flex items-center gap-1 transition-colors"
+                className="font-semibold text-orange-400 hover:text-orange-300 transition-colors"
               >
-                <span>Inicia sesión aquí</span>
-                <ArrowRight className="w-3 h-3" />
+                Iniciar sesión
               </Link>
             </p>
           </div>

@@ -157,7 +157,13 @@ export class MercadoPagoService {
       };
     }
 
-    const montoCobrar = Number(reservacionDB.monto_total || dto.monto);
+    const esLiquidacionMulta =
+      reservacionDB.estado_reservacion === 'cancelled' ||
+      String(dto.descripcion || '').toUpperCase().includes('LIQUIDACION_MULTA');
+
+    const montoCobrar = esLiquidacionMulta
+      ? Number(dto.monto || 105)
+      : Number(reservacionDB.monto_total || dto.monto);
     const accessToken = ENV.MERCADOPAGO.ACCESS_TOKEN;
 
     // Validar que el administrador haya configurado su MERCADOPAGO_ACCESS_TOKEN real
@@ -411,8 +417,12 @@ export class MercadoPagoService {
       };
     }
 
-    // 6. Si el pago es APROBADO -> Actualizar automáticamente la reservación a 'confirmed'
-    const nuevoEstadoReserva = mpApproved ? 'confirmed' : 'pending';
+    // 6. Si el pago es APROBADO -> Actualizar automáticamente la reservación a 'confirmed' (o mantener 'cancelled' si es liquidación de multa)
+    const nuevoEstadoReserva = esLiquidacionMulta
+      ? 'cancelled'
+      : mpApproved
+      ? 'confirmed'
+      : 'pending';
 
     const { data: reservacionActualizada } = await (supabase.from('reservaciones') as any)
       .update({ estado_reservacion: nuevoEstadoReserva })
@@ -421,11 +431,15 @@ export class MercadoPagoService {
       .single();
 
     // 7. Registrar el pago verificado en la tabla 'pagos' de Supabase
+    const conceptoPagoFinal = esLiquidacionMulta
+      ? `LIQUIDACION_MULTA_CANCELACION Reserva #${dto.reservacion_id} [${metodoPagoMarca.toUpperCase()} ****${ultimosCuatro || '****'}]`
+      : `${descripcionCargo} [${metodoPagoMarca.toUpperCase()} ****${ultimosCuatro || '****'}]`;
+
     const { data: pagoRegistrado } = await (supabase.from('pagos') as any)
       .insert({
         reservacion_id: Number(dto.reservacion_id) || dto.reservacion_id,
         monto: montoCobrar,
-        concepto_pago: `${descripcionCargo} [${metodoPagoMarca.toUpperCase()} ****${ultimosCuatro || '****'}]`,
+        concepto_pago: conceptoPagoFinal,
         metodo_pago: 'card',
         transaccion_id: `MP-${mpTransactionId}`,
       })

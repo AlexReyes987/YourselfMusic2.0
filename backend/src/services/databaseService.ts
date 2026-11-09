@@ -395,6 +395,17 @@ export class DatabaseService {
       if (uErr.status) throw uErr;
     }
 
+    // 4.5. Verificar que el usuario no tenga adeudos pendientes por multas de cancelación tardía ($105 MXN)
+    const resumenAdeudos = await this.obtenerAdeudosMultasUsuario(validUsuarioId);
+    if (resumenAdeudos.total_adeudo > 0) {
+      const foliosPendientes = resumenAdeudos.detalles.map((d) => `#${d.reservacion_id}`).join(', ');
+      throw {
+        status: 403,
+        message: `Cuenta con saldo pendiente por multa de cancelación: Tienes un adeudo de $${resumenAdeudos.total_adeudo} MXN (Reservación ${foliosPendientes}) por cancelar el mismo día o 1 día antes del ensayo. Por favor liquida tu multa en la sección "Mis Reservaciones" o en recepción para poder agendar una nueva sala.`,
+        adeudo: resumenAdeudos,
+      };
+    }
+
     // 5. Determinar estado inicial según método de pago (Business Rule #4)
     const esTarjeta = dto.pago?.metodo_pago === 'card' || dto.pago?.metodo_pago === 'tarjeta';
     const estadoInicial: EstadoReservacion =
@@ -504,7 +515,8 @@ export class DatabaseService {
   }
 
   /**
-   * 4. Consulta las reservaciones de un usuario autenticado específico.
+   * 4. Consulta las reservaciones de un usuario autenticado específico,
+   * incluyendo salas, pagos, cancelaciones y el cálculo en vivo de la política de cancelación.
    */
   static async getReservacionesPorUsuario(usuarioId: number): Promise<any[]> {
     try {
@@ -513,7 +525,8 @@ export class DatabaseService {
         .select(`
           *,
           salas ( sala_id, nombre_sala, precio_por_hora, capacidad ),
-          pagos ( pago_id, monto, metodo_pago, transaccion_id, fecha_pago, concepto_pago )
+          pagos ( pago_id, monto, metodo_pago, transaccion_id, fecha_pago, concepto_pago ),
+          cancelaciones ( cancelacion_id, fecha_cancelacion, tarifa_multa, es_mismo_dia, monto_reembolsado )
         `)
         .eq('usuario_id', usuarioId)
         .order('fecha_reservacion', { ascending: false })
@@ -524,14 +537,281 @@ export class DatabaseService {
         return [];
       }
 
-      return (data || []).map((r: any) => ({
-        ...r,
-        nombre_sala: r.salas?.nombre_sala || `Sala ${r.sala_id}`,
-      }));
+      return (data || []).map((r: any) => {
+        const evaluacionCancelacion = this.evaluarPoliticaCancelacion(
+          r.fecha_reservacion,
+          Number(r.monto_total || 0),
+          r.estado_reservacion,
+          r.pagos || [],
+          r.cancelaciones || []
+        );
+
+        return {
+          ...r,
+          nombre_sala: r.salas?.nombre_sala || `Sala ${r.sala_id}`,
+          politica_cancelacion: evaluacionCancelacion,
+        };
+      });
     } catch (err: any) {
       console.warn('[DatabaseService.getReservacionesPorUsuario] Error:', err.message);
       return [];
     }
+  }
+
+  /**
+   * Regla Oficial de Cancelación YourSelf Music:
+   * - Si la reservación se cancela el MISMO DÍA del ensayo (diasDiferencia === 0)
+   *   o UN DÍA ANTES del ensayo (diasDiferencia === 1), se aplica una multa fija
+   *   de $105.00 MXN en total por toda la banda.
+   * - Si se cancela con 2 o más días de anticipación (diasDiferencia >= 2),
+   *   la multa es de $0.00 MXN.
+   */
+  static evaluarPoliticaCancelacion(
+    fechaReservacion: string,
+    montoTotal: number,
+    estadoReservacion: string,
+    pagos: any[] = [],
+    cancelaciones: any[] = []
+  ) {
+    const MULTA_OFICIAL_MXN = 105;
+
+    // Obtener fecha actual en zona horaria de México (YYYY-MM-DD)
+    const hoyStr = new Date().toLocaleDateString('en-CA', {
+      timeZone: 'America/Mexico_City',
+    });
+
+    const [yR, mR, dR] = String(fechaReservacion).slice(0, 10).split('-').map(Number);
+    const [yH, mH, dH] = hoyStr.split('-').map(Number);
+
+    const utcReserva = Date.UTC(yR, (mR || 1) - 1, dR || 1);
+    const utcHoy = Date.UTC(yH, (mH || 1) - 1, dH || 1);
+    const diasAnticipacion = Math.round((utcReserva - utcHoy) / (1000 * 60 * 60 * 24));
+
+    // Aplica multa si se cancela el mismo día (0) o 1 día antes (1)
+    const aplicaMulta = diasAnticipacion === 0 || diasAnticipacion === 1;
+    const esMismoDia = diasAnticipacion === 0;
+    const esUnDiaAntes = diasAnticipacion === 1;
+    const tarifaMulta = aplicaMulta ? MULTA_OFICIAL_MXN : 0;
+
+    // Calcular cuánto dinero real ya está acreditado en la reservación
+    // (Si estaba 'confirmed', el pago inicial fue acreditado; o si hay pagos de LIQUIDACION_MULTA o MP-)
+    const pagosLiquidacionMulta = (pagos || []).filter((p: any) =>
+      String(p?.concepto_pago || '').toUpperCase().includes('LIQUIDACION_MULTA')
+    );
+    const montoLiquidadoMultaExtra = pagosLiquidacionMulta.reduce(
+      (acc: number, p: any) => acc + Number(p?.monto || 0),
+      0
+    );
+
+    const tienePagoTarjetaConfirmado = (pagos || []).some(
+      (p: any) =>
+        !String(p?.concepto_pago || '').toUpperCase().includes('LIQUIDACION_MULTA') &&
+        (p?.metodo_pago === 'card' || String(p?.transaccion_id || '').startsWith('MP-'))
+    );
+
+    // Si la reservación ya estaba 'confirmed' o fue pagada con tarjeta, el montoTotal original ya ingresó al estudio
+    const cancelacionExistente = Array.isArray(cancelaciones) && cancelaciones.length > 0 ? cancelaciones[0] : null;
+    const montoPagadoOriginal =
+      estadoReservacion === 'confirmed' ||
+      tienePagoTarjetaConfirmado ||
+      (cancelacionExistente && Number(cancelacionExistente.monto_reembolsado || 0) > 0)
+        ? Number(montoTotal || 0)
+        : 0;
+
+    const multaEfectiva = cancelacionExistente
+      ? Number(cancelacionExistente.tarifa_multa ?? tarifaMulta)
+      : tarifaMulta;
+
+    const montoRetenidoDelPago = Math.min(montoPagadoOriginal, multaEfectiva);
+    const montoReembolsado = cancelacionExistente
+      ? Number(cancelacionExistente.monto_reembolsado ?? Math.max(0, montoPagadoOriginal - multaEfectiva))
+      : Math.max(0, montoPagadoOriginal - multaEfectiva);
+
+    const adeudoPendiente = Math.max(
+      0,
+      multaEfectiva - montoRetenidoDelPago - montoLiquidadoMultaExtra
+    );
+
+    return {
+      fecha_hoy: hoyStr,
+      fecha_reservacion: fechaReservacion,
+      dias_anticipacion: diasAnticipacion,
+      es_mismo_dia: esMismoDia,
+      es_un_dia_antes: esUnDiaAntes,
+      aplica_multa: aplicaMulta,
+      tarifa_multa: multaEfectiva,
+      monto_pagado_original: montoPagadoOriginal,
+      monto_retenido: montoRetenidoDelPago,
+      monto_reembolsado: montoReembolsado,
+      monto_liquidado_extra: montoLiquidadoMultaExtra,
+      adeudo_pendiente: estadoReservacion === 'cancelled' ? adeudoPendiente : Math.max(0, tarifaMulta - Math.min(montoPagadoOriginal, tarifaMulta)),
+      explicacion: aplicaMulta
+        ? esMismoDia
+          ? 'Cancelación el mismo día del ensayo: Aplica multa fija de $105.00 MXN por toda la banda.'
+          : 'Cancelación 1 día antes del ensayo: Aplica multa fija de $105.00 MXN por toda la banda.'
+        : 'Cancelación con 2 o más días de anticipación: Libre de multa ($0.00 MXN).',
+    };
+  }
+
+  /**
+   * Obtiene el resumen de adeudos pendientes por multas de cancelación tardía ($105 MXN) de un usuario.
+   */
+  static async obtenerAdeudosMultasUsuario(usuarioId: number | string) {
+    const uid = Number(usuarioId);
+    if (!uid || isNaN(uid)) {
+      return { total_adeudo: 0, detalles: [] as any[] };
+    }
+
+    const reservaciones = await this.getReservacionesPorUsuario(uid);
+    const detalles: Array<{
+      reservacion_id: number | string;
+      nombre_sala: string;
+      fecha_reservacion: string;
+      horario: string;
+      tarifa_multa: number;
+      monto_retenido: number;
+      adeudo_pendiente: number;
+    }> = [];
+
+    for (const r of reservaciones) {
+      if (r.estado_reservacion !== 'cancelled') continue;
+      const tieneRegistroCancelacion = Array.isArray(r.cancelaciones) && r.cancelaciones.length > 0;
+      if (!tieneRegistroCancelacion) continue;
+
+      const pol = r.politica_cancelacion;
+      if (pol && pol.adeudo_pendiente > 0) {
+        detalles.push({
+          reservacion_id: r.reservacion_id,
+          nombre_sala: r.nombre_sala,
+          fecha_reservacion: r.fecha_reservacion,
+          horario: `${String(r.hora_inicio || '').slice(0, 5)} - ${String(r.hora_fin || '').slice(0, 5)}`,
+          tarifa_multa: pol.tarifa_multa,
+          monto_retenido: pol.monto_retenido,
+          adeudo_pendiente: pol.adeudo_pendiente,
+        });
+      }
+    }
+
+    const totalAdeudo = detalles.reduce((acc, item) => acc + item.adeudo_pendiente, 0);
+    return {
+      total_adeudo: totalAdeudo,
+      detalles,
+    };
+  }
+
+  /**
+   * Cancela una reservación aplicando automáticamente la política de multa de $105 MXN
+   * si se cancela el mismo día del ensayo o 1 día antes.
+   */
+  static async cancelarReservacionConPolitica(params: {
+    reservacion_id: number | string;
+    usuario_id: number | string;
+    es_admin?: boolean;
+    motivo?: string;
+  }) {
+    const { data: resRaw, error: resErr } = await (supabase.from('reservaciones') as any)
+      .select(`
+        *,
+        salas ( sala_id, nombre_sala ),
+        usuarios ( usuario_id, nombre, email ),
+        pagos ( pago_id, monto, metodo_pago, transaccion_id, concepto_pago ),
+        cancelaciones ( cancelacion_id, tarifa_multa, monto_reembolsado )
+      `)
+      .eq('reservacion_id', params.reservacion_id)
+      .maybeSingle();
+
+    if (resErr || !resRaw) {
+      throw { status: 404, message: `No se encontró la reservación #${params.reservacion_id}.` };
+    }
+
+    const reservacion: any = resRaw;
+
+    if (!params.es_admin && String(reservacion.usuario_id) !== String(params.usuario_id)) {
+      throw { status: 403, message: 'No tienes permiso para cancelar una reservación que pertenece a otro usuario.' };
+    }
+
+    if (reservacion.estado_reservacion === 'cancelled') {
+      throw { status: 400, message: 'Esta reservación ya se encuentra cancelada.' };
+    }
+
+    // Evaluar política de cancelación oficial ($105 MXN mismo día o 1 día antes)
+    const evaluacion = this.evaluarPoliticaCancelacion(
+      reservacion.fecha_reservacion,
+      Number(reservacion.monto_total || 0),
+      reservacion.estado_reservacion,
+      reservacion.pagos || [],
+      []
+    );
+
+    // 1. Actualizar estado de la reservación a 'cancelled'
+    const { error: updateErr } = await (supabase.from('reservaciones') as any)
+      .update({ estado_reservacion: 'cancelled' })
+      .eq('reservacion_id', params.reservacion_id);
+
+    if (updateErr) {
+      throw { status: 500, message: `Error al cancelar la reservación: ${updateErr.message}` };
+    }
+
+    // 2. Insertar registro en la tabla 'cancelaciones'
+    const { data: cancelacionCreada } = await (supabase.from('cancelaciones') as any)
+      .insert({
+        reservacion_id: Number(params.reservacion_id) || params.reservacion_id,
+        tarifa_multa: evaluacion.tarifa_multa,
+        es_mismo_dia: evaluacion.aplica_multa, // true si aplica penalización (mismo día o 1 día antes)
+        monto_reembolsado: evaluacion.monto_reembolsado,
+      })
+      .select()
+      .single();
+
+    // 3. Registrar en auditoría con desglose completo
+    const motivoTexto = params.motivo?.trim() || 'Cancelación solicitada por el cliente';
+    await this.registrarAuditoria(
+      reservacion.usuario_id,
+      `CANCELACION_${evaluacion.aplica_multa ? 'CON_MULTA_105' : 'SIN_MULTA'}: Reserva #${params.reservacion_id} (${reservacion.fecha_reservacion}). Multa: $${evaluacion.tarifa_multa} MXN | Retenido: $${evaluacion.monto_retenido} MXN | Reembolsado: $${evaluacion.monto_reembolsado} MXN | Adeudo Pendiente: $${evaluacion.adeudo_pendiente} MXN. Motivo: ${motivoTexto}`,
+      'cancelaciones'
+    );
+
+    return {
+      reservacion_id: params.reservacion_id,
+      estado_reservacion: 'cancelled',
+      cancelacion: cancelacionCreada,
+      desglose_multa: evaluacion,
+    };
+  }
+
+  /**
+   * Registra el pago/liquidación de una multa pendiente por cancelación tardía ($105 MXN).
+   */
+  static async liquidarMultaCancelacion(params: {
+    reservacion_id: number | string;
+    monto: number;
+    metodo_pago: 'card' | 'transfer';
+    transaccion_id?: string;
+    usuario_id?: number | string;
+  }) {
+    const transaccionId = params.transaccion_id || `MULTA-${Date.now()}`;
+    const { data: pagoMulta, error } = await (supabase.from('pagos') as any)
+      .insert({
+        reservacion_id: Number(params.reservacion_id) || params.reservacion_id,
+        monto: Number(params.monto || 105),
+        concepto_pago: `LIQUIDACION_MULTA_CANCELACION Reserva #${params.reservacion_id}`,
+        metodo_pago: params.metodo_pago,
+        transaccion_id: transaccionId,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw { status: 500, message: `No se pudo registrar la liquidación de la multa: ${error.message}` };
+    }
+
+    await this.registrarAuditoria(
+      params.usuario_id || 1,
+      `LIQUIDACION_MULTA: Pagada multa de $${params.monto} MXN correspondiente a la Reservación #${params.reservacion_id} (${transaccionId})`,
+      'pagos'
+    );
+
+    return pagoMulta;
   }
 
   /**

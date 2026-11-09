@@ -86,7 +86,7 @@ export const AdminTransfersPage: React.FC = () => {
 
         <button
           onClick={() => cargarTransferencias()}
-          className="p-2 rounded-xl bg-[#181b24] hover:bg-zinc-800 border border-[#2a3142] text-zinc-300 hover:text-white transition-colors"
+          className="p-2 rounded-xl bg-[#141417] hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white transition-colors"
           title="Recargar pagos"
         >
           <RotateCcw className={`w-4 h-4 ${loading ? 'animate-spin text-orange-400' : ''}`} />
@@ -111,8 +111,8 @@ export const AdminTransfersPage: React.FC = () => {
       )}
 
       {/* Contenedor Principal */}
-      <div className="border border-[#2a3142] rounded-2xl bg-[#181b24] overflow-hidden shadow-xl">
-        <div className="p-4 border-b border-[#2a3142] flex items-center justify-between">
+      <div className="border border-zinc-800 rounded-2xl bg-[#141417] overflow-hidden shadow-xl">
+        <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
           <h3 className="text-sm font-bold text-white">Depósitos y Transferencias Registradas</h3>
           <span className="text-xs text-zinc-400">
             Pendientes por validar:{' '}
@@ -123,7 +123,7 @@ export const AdminTransfersPage: React.FC = () => {
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="bg-[#1f2430] border-b border-[#2a3142] text-zinc-400 font-semibold">
+              <tr className="bg-[#1b1b20] border-b border-zinc-800 text-zinc-400 font-semibold">
                 <th className="p-3.5">Ref. Rastreo</th>
                 <th className="p-3.5">Cliente</th>
                 <th className="p-3.5">Sala & Fecha</th>
@@ -132,7 +132,7 @@ export const AdminTransfersPage: React.FC = () => {
                 <th className="p-3.5 text-center">Acciones Administrativas</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#2a3142]/60">
+            <tbody className="divide-y divide-zinc-800/60">
               {loading ? (
                 <tr>
                   <td colSpan={6} className="p-8 text-center text-zinc-400">
@@ -230,7 +230,7 @@ export const AdminTransfersPage: React.FC = () => {
       {/* Modal Rechazar Comprobante */}
       {rechazoModalOpen && resARechazar && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md bg-[#181b24] border border-[#2a3142] rounded-2xl p-5 space-y-4">
+          <div className="w-full max-w-md bg-[#141417] border border-zinc-800 rounded-2xl p-5 space-y-4">
             <div className="flex items-center gap-2 text-rose-400 font-bold text-base">
               <AlertTriangle className="w-5 h-5" />
               <span>Rechazar Comprobante de Pago</span>
@@ -246,11 +246,11 @@ export const AdminTransfersPage: React.FC = () => {
                 rows={3}
                 value={motivoRechazo}
                 onChange={(e) => setMotivoRechazo(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-[#1f2430] border border-[#2a3142] text-xs text-white resize-none focus:outline-none focus:border-orange-500"
+                className="w-full px-3 py-2 rounded-xl bg-[#1b1b20] border border-zinc-800 text-xs text-white resize-none focus:outline-none focus:border-orange-500"
               />
             </div>
 
-            <div className="flex justify-end gap-2 pt-2 border-t border-[#2a3142]">
+            <div className="flex justify-end gap-2 pt-2 border-t border-zinc-800">
               <button
                 onClick={() => setRechazoModalOpen(false)}
                 disabled={isProcessing}

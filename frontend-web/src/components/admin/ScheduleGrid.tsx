@@ -27,8 +27,8 @@ export const ScheduleGrid: React.FC<ScheduleGridProps> = ({
   const normalizarH = (h: string) => parseInt(h.split(':')[0], 10);
 
   return (
-    <div className="border border-[#2a3142] rounded-2xl bg-[#181b24] overflow-hidden shadow-xl">
-      <div className="p-4 border-b border-[#2a3142] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+    <div className="border border-zinc-800 rounded-2xl bg-[#141417] overflow-hidden shadow-xl">
+      <div className="p-4 border-b border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-bold text-white">
             Matriz Horaria de Ocupación — {date}
@@ -57,7 +57,7 @@ export const ScheduleGrid: React.FC<ScheduleGridProps> = ({
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-xs">
           <thead>
-            <tr className="bg-[#1f2430] border-b border-[#2a3142]">
+            <tr className="bg-[#1b1b20] border-b border-zinc-800">
               <th className="p-3 text-left font-semibold text-zinc-400 w-24">Hora</th>
               {ROOMS.map((room) => (
                 <th key={room.id} className="p-3 text-center font-semibold text-zinc-200">
@@ -68,7 +68,7 @@ export const ScheduleGrid: React.FC<ScheduleGridProps> = ({
           </thead>
           <tbody>
             {HOURS.map((hour) => (
-              <tr key={hour} className="border-b border-[#2a3142]/60 hover:bg-zinc-800/20">
+              <tr key={hour} className="border-b border-zinc-800/60 hover:bg-zinc-800/20">
                 <td className="p-3 font-mono text-zinc-400 font-medium">
                   {hour}:00
                 </td>

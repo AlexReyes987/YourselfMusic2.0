@@ -41,11 +41,11 @@ export const AdminLayout: React.FC = () => {
   const title = TITLES[location.pathname] || 'Panel Administrativo';
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#0f1117] text-zinc-100">
+    <div className="flex h-screen w-screen overflow-hidden bg-[#0c0c0e] text-zinc-100">
       <AdminSidebar />
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         <AdminHeader title={title} />
-        <main className="flex-1 overflow-y-auto bg-[#0f1117]">
+        <main className="flex-1 overflow-y-auto bg-[#0c0c0e]">
           <Routes>
             <Route index element={<AdminDashboardPage />} />
             <Route path="calendar" element={<AdminCalendarPage />} />

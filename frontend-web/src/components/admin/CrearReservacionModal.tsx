@@ -77,8 +77,8 @@ export const CrearReservacionModal: React.FC<CrearReservacionModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="w-full max-w-lg bg-[#181b24] border border-[#2a3142] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="p-4 border-b border-[#2a3142] flex items-center justify-between">
+      <div className="w-full max-w-lg bg-[#141417] border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Music className="w-5 h-5 text-orange-400" />
             <h3 className="font-bold text-white text-base">Crear Reservación Manual</h3>
@@ -116,7 +116,7 @@ export const CrearReservacionModal: React.FC<CrearReservacionModalProps> = ({
                 placeholder="Ej. Banda Los Alacranes / Roberto Gómez"
                 value={nombreCliente}
                 onChange={(e) => setNombreCliente(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-[#1f2430] border border-[#2a3142] text-xs text-white focus:outline-none focus:border-orange-500"
+                className="w-full px-3 py-2 rounded-xl bg-[#1b1b20] border border-zinc-800 text-xs text-white focus:outline-none focus:border-orange-500"
               />
             </div>
 
@@ -132,7 +132,7 @@ export const CrearReservacionModal: React.FC<CrearReservacionModalProps> = ({
                   placeholder="618 123 4567"
                   value={telefonoCliente}
                   onChange={(e) => setTelefonoCliente(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-[#1f2430] border border-[#2a3142] text-xs text-white focus:outline-none focus:border-orange-500"
+                  className="w-full px-3 py-2 rounded-xl bg-[#1b1b20] border border-zinc-800 text-xs text-white focus:outline-none focus:border-orange-500"
                 />
               </div>
 
@@ -146,14 +146,14 @@ export const CrearReservacionModal: React.FC<CrearReservacionModalProps> = ({
                   placeholder="cliente@email.com"
                   value={emailCliente}
                   onChange={(e) => setEmailCliente(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-[#1f2430] border border-[#2a3142] text-xs text-white focus:outline-none focus:border-orange-500"
+                  className="w-full px-3 py-2 rounded-xl bg-[#1b1b20] border border-zinc-800 text-xs text-white focus:outline-none focus:border-orange-500"
                 />
               </div>
             </div>
           </div>
 
           {/* Sala, Fecha, Miembros y Horario */}
-          <div className="space-y-3 pt-2 border-t border-[#2a3142]">
+          <div className="space-y-3 pt-2 border-t border-zinc-800">
             <h4 className="text-xs font-bold text-zinc-300 uppercase tracking-wider">
               Detalles del Ensayo
             </h4>
@@ -164,7 +164,7 @@ export const CrearReservacionModal: React.FC<CrearReservacionModalProps> = ({
                 <select
                   value={salaId}
                   onChange={(e) => setSalaId(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-xl bg-[#1f2430] border border-[#2a3142] text-xs text-white focus:outline-none focus:border-orange-500"
+                  className="w-full px-3 py-2 rounded-xl bg-[#1b1b20] border border-zinc-800 text-xs text-white focus:outline-none focus:border-orange-500"
                 >
                   <option value={1}>Sala 1 - Azul / Neon ($35/pers/h)</option>
                   <option value={2}>Sala 2 - Roja ($35/pers/h)</option>
@@ -183,7 +183,7 @@ export const CrearReservacionModal: React.FC<CrearReservacionModalProps> = ({
                   required
                   value={fecha}
                   onChange={(e) => setFecha(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-[#1f2430] border border-[#2a3142] text-xs text-white focus:outline-none focus:border-orange-500"
+                  className="w-full px-3 py-2 rounded-xl bg-[#1b1b20] border border-zinc-800 text-xs text-white focus:outline-none focus:border-orange-500"
                 />
               </div>
             </div>
@@ -197,7 +197,7 @@ export const CrearReservacionModal: React.FC<CrearReservacionModalProps> = ({
                 <select
                   value={horaInicio}
                   onChange={(e) => setHoraInicio(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-xl bg-[#1f2430] border border-[#2a3142] text-xs text-white focus:outline-none focus:border-orange-500"
+                  className="w-full px-3 py-2 rounded-xl bg-[#1b1b20] border border-zinc-800 text-xs text-white focus:outline-none focus:border-orange-500"
                 >
                   {HOURS.filter((h) => h < 23).map((h) => (
                     <option key={h} value={h}>
@@ -212,7 +212,7 @@ export const CrearReservacionModal: React.FC<CrearReservacionModalProps> = ({
                 <select
                   value={duracion}
                   onChange={(e) => setDuracion(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-xl bg-[#1f2430] border border-[#2a3142] text-xs text-white focus:outline-none focus:border-orange-500"
+                  className="w-full px-3 py-2 rounded-xl bg-[#1b1b20] border border-zinc-800 text-xs text-white focus:outline-none focus:border-orange-500"
                 >
                   <option value={1}>1 Hora ({horaInicio}:00 - {horaInicio + 1}:00)</option>
                   <option value={2}>2 Horas ({horaInicio}:00 - {horaInicio + 2}:00)</option>
@@ -229,7 +229,7 @@ export const CrearReservacionModal: React.FC<CrearReservacionModalProps> = ({
                 <select
                   value={numMiembros}
                   onChange={(e) => setNumMiembros(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-xl bg-[#1f2430] border border-[#2a3142] text-xs text-white focus:outline-none focus:border-orange-500"
+                  className="w-full px-3 py-2 rounded-xl bg-[#1b1b20] border border-zinc-800 text-xs text-white focus:outline-none focus:border-orange-500"
                 >
                   {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
                     <option key={n} value={n}>
@@ -242,7 +242,7 @@ export const CrearReservacionModal: React.FC<CrearReservacionModalProps> = ({
           </div>
 
           {/* Opciones de Pago */}
-          <div className="p-3 rounded-xl bg-[#1f2430] border border-[#2a3142] space-y-2">
+          <div className="p-3 rounded-xl bg-[#1b1b20] border border-zinc-800 space-y-2">
             <div className="flex items-center justify-between">
               <label className="flex items-center gap-2 text-xs text-zinc-200 cursor-pointer">
                 <input
