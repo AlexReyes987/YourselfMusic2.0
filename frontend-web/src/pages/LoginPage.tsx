@@ -39,6 +39,12 @@ export const LoginPage: React.FC = () => {
       const response = await authService.login(cleanEmail, password);
       login(response.token, response.user);
 
+      // Si es el administrador (yourself@gmail.com), enviarlo directamente al Panel de Administración
+      if (response.user?.role === 'admin' || cleanEmail === 'yourself@gmail.com') {
+        navigate('/admin', { replace: true });
+        return;
+      }
+
       const savedBooking =
         state?.bookingData ||
         (() => {
@@ -55,7 +61,7 @@ export const LoginPage: React.FC = () => {
       } else if (state?.from) {
         navigate(state.from, { replace: true });
       } else {
-        navigate('/my-reservations', { replace: true });
+        navigate('/booking', { replace: true });
       }
     } catch (err: any) {
       const serverMessage =

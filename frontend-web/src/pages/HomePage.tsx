@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Sala } from '../types';
 import { roomService } from '../services/roomService';
+import { useAuth } from '../context/AuthContext';
 
 export const HomePage: React.FC = () => {
   const [salas, setSalas] = useState<Sala[]>([]);
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
     async function loadSalas() {
@@ -17,6 +20,19 @@ export const HomePage: React.FC = () => {
     }
     loadSalas();
   }, []);
+
+  const handleGoToBooking = () => {
+    if (!isAuthenticated) {
+      navigate('/login', {
+        state: {
+          from: '/booking',
+          message: 'Inicia sesión o crea tu cuenta para reservar una sala de ensayo.',
+        },
+      });
+      return;
+    }
+    navigate('/booking');
+  };
 
   return (
     <div className="py-12 sm:py-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto space-y-20">
@@ -34,13 +50,18 @@ export const HomePage: React.FC = () => {
           aislamiento acústico y consulta de disponibilidad en tiempo real.
         </p>
 
-        <div className="pt-4 flex items-center justify-center gap-4">
-          <Link
-            to="/booking"
+        <p className="text-xs sm:text-sm text-zinc-400">
+          Horario de servicio: <strong className="text-zinc-200">lunes a sábado de 12:00 PM a 11:00 PM</strong>
+        </p>
+
+        <div className="pt-2 flex items-center justify-center gap-4">
+          <button
+            type="button"
+            onClick={handleGoToBooking}
             className="px-7 py-3.5 bg-wine-500 hover:bg-wine-600 text-white font-semibold rounded-xl border border-wine-400/20 shadow-md shadow-black/40 transition-all text-sm sm:text-base cursor-pointer"
           >
             Reservar sala ahora
-          </Link>
+          </button>
         </div>
       </div>
 
@@ -55,12 +76,13 @@ export const HomePage: React.FC = () => {
               Equipamiento de alta gama, acústica tratada y ambiente climatizado.
             </p>
           </div>
-          <Link
-            to="/booking"
-            className="text-xs sm:text-sm font-semibold text-orange-400 hover:text-orange-300 transition-colors"
+          <button
+            type="button"
+            onClick={handleGoToBooking}
+            className="text-xs sm:text-sm font-semibold text-orange-400 hover:text-orange-300 transition-colors text-left sm:text-right cursor-pointer"
           >
             Ver disponibilidad de horarios
-          </Link>
+          </button>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
@@ -90,12 +112,13 @@ export const HomePage: React.FC = () => {
 
               <div className="mt-5 pt-3 border-t border-zinc-800/80 flex items-center justify-between text-xs text-zinc-400">
                 <span>Hasta {sala.capacidad} músicos</span>
-                <Link
-                  to="/booking"
-                  className="text-orange-400 font-semibold hover:underline"
+                <button
+                  type="button"
+                  onClick={handleGoToBooking}
+                  className="text-orange-400 font-semibold hover:underline cursor-pointer"
                 >
                   Reservar
-                </Link>
+                </button>
               </div>
             </div>
           ))}
@@ -111,9 +134,9 @@ export const HomePage: React.FC = () => {
           </p>
         </div>
         <div className="p-6 rounded-2xl bg-zinc-900/40 border border-zinc-800 space-y-2">
-          <h3 className="font-bold text-white text-base">Disponibilidad inmediata</h3>
+          <h3 className="font-bold text-white text-base">Horario de atención</h3>
           <p className="text-xs text-zinc-400 leading-relaxed">
-            Consulta los horarios libres al instante y aparta tus horas de ensayo sin contratiempos.
+            Servicio de lunes a sábado de 12:00 PM a 11:00 PM. Consulta los horarios libres al instante y aparta tus horas de ensayo.
           </p>
         </div>
         <div className="p-6 rounded-2xl bg-zinc-900/40 border border-zinc-800 space-y-2">
@@ -121,6 +144,35 @@ export const HomePage: React.FC = () => {
           <p className="text-xs text-zinc-400 leading-relaxed">
             Confirma tu reservación al momento con tarjeta de crédito, débito o transferencia bancaria SPEI.
           </p>
+        </div>
+      </div>
+
+      {/* Sección de Contacto Directo */}
+      <div className="p-6 sm:p-8 rounded-2xl bg-zinc-900/60 border border-zinc-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+        <div className="space-y-1.5">
+          <h2 className="text-lg sm:text-xl font-bold text-white">
+            ¿Necesitas atención personalizada? Contáctanos directamente
+          </h2>
+          <p className="text-xs sm:text-sm text-zinc-400 max-w-xl">
+            Si tienes dudas sobre equipamiento, horarios especiales o tus reservaciones, comunícate con nosotros por WhatsApp o correo electrónico.
+          </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
+          <a
+            href="https://wa.me/526181133482"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-5 py-3 rounded-xl bg-wine-500 hover:bg-wine-600 text-white text-xs sm:text-sm font-semibold text-center border border-wine-400/20 transition-colors"
+          >
+            WhatsApp
+          </a>
+          <a
+            href="mailto:yourself_music@hotmail.com"
+            className="px-5 py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white text-xs sm:text-sm font-semibold text-center border border-zinc-700 transition-colors"
+          >
+            yourself_music@hotmail.com
+          </a>
         </div>
       </div>
     </div>

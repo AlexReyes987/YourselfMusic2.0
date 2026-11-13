@@ -184,10 +184,30 @@ export const MyReservationsPage: React.FC = () => {
         </Link>
       </div>
 
-      {/* Nota discreta de política de cancelación */}
-      <p className="text-xs text-zinc-400 leading-relaxed">
-        <strong className="text-zinc-300">Política de cancelación:</strong> Las cancelaciones realizadas el mismo día del ensayo o un día antes generan un cargo de ${MULTA_CANCELACION_MXN}.00 MXN por toda la banda. Cancelar con 2 o más días de anticipación no tiene costo.
-      </p>
+      {/* Nota discreta de política de cancelación y contacto directo */}
+      <div className="space-y-1.5 text-xs text-zinc-400 leading-relaxed">
+        <p>
+          <strong className="text-zinc-300">Política de cancelación:</strong> Las cancelaciones realizadas el mismo día del ensayo o un día antes generan un cargo de ${MULTA_CANCELACION_MXN}.00 MXN por toda la banda. Cancelar con 2 o más días de anticipación no tiene costo.
+        </p>
+        <p>
+          <strong className="text-zinc-300">Contacto directo YourSelf Music:</strong>{' '}
+          <a
+            href="https://wa.me/526181133482"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-zinc-200 hover:text-orange-400 underline"
+          >
+            WhatsApp: 618 113 3482
+          </a>{' '}
+          •{' '}
+          <a
+            href="mailto:yourself_music@hotmail.com"
+            className="text-zinc-200 hover:text-orange-400 underline"
+          >
+            Correo: yourself_music@hotmail.com
+          </a>
+        </p>
+      </div>
 
       {/* Banner de Adeudo Activo por Multa de Cancelación (si existe) */}
       {adeudoInfo.total_adeudo > 0 && (

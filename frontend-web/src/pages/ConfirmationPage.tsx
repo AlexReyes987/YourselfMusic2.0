@@ -209,8 +209,25 @@ export const ConfirmationPage: React.FC = () => {
             </span>
           </div>
 
-          <div className="text-zinc-500 text-xs pt-1">
-            YourSelf Music Estudio — Durango, Dgo.
+          <div className="text-zinc-400 text-xs pt-2 border-t border-zinc-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <span>YourSelf Music Estudio — Durango, Dgo.</span>
+            <div className="flex flex-wrap items-center gap-3">
+              <a
+                href="https://wa.me/526181133482"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-zinc-200 hover:text-orange-400 underline"
+              >
+                WhatsApp: 618 113 3482
+              </a>
+              <span>•</span>
+              <a
+                href="mailto:yourself_music@hotmail.com"
+                className="text-zinc-200 hover:text-orange-400 underline"
+              >
+                yourself_music@hotmail.com
+              </a>
+            </div>
           </div>
         </div>
       </div>

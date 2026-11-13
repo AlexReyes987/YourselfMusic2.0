@@ -40,7 +40,7 @@ export const AdminDashboardPage: React.FC = () => {
     (r) => r.estado_reservacion === 'pending'
   ).length;
 
-  // Tasa de ocupación hoy (4 salas * 12 horas operativas = 48 horas totales)
+  // Tasa de ocupación hoy (4 salas * 11 horas operativas [12:00 a 23:00] = 44 horas totales)
   const horasOcupadasHoy = reservacionesHoy
     .filter((r) => r.estado_reservacion !== 'cancelled')
     .reduce((sum, r) => {
@@ -48,7 +48,7 @@ export const AdminDashboardPage: React.FC = () => {
       const endH = parseInt(r.hora_fin.split(':')[0], 10);
       return sum + Math.max(1, endH - startH);
     }, 0);
-  const porcentajeOcupacion = Math.min(100, Math.round((horasOcupadasHoy / 48) * 100));
+  const porcentajeOcupacion = Math.min(100, Math.round((horasOcupadasHoy / 44) * 100));
 
   return (
     <div className="p-6 space-y-6">
@@ -116,7 +116,7 @@ export const AdminDashboardPage: React.FC = () => {
             <Layers className="w-4 h-4 text-blue-400" />
           </div>
           <div className="text-2xl font-black text-white">{porcentajeOcupacion}%</div>
-          <p className="text-[11px] text-zinc-500">{horasOcupadasHoy} hrs reservadas de 48 hrs</p>
+          <p className="text-[11px] text-zinc-500">{horasOcupadasHoy} hrs reservadas de 44 hrs</p>
         </div>
       </div>
 

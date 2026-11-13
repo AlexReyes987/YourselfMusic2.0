@@ -178,25 +178,12 @@ export class DatabaseService {
       };
     }
 
-    // 3. Consultar horario operativo en horarios_disponibles con tolerancia a fallas
-    let horaAperturaStr = '12:00:00';
-    let horaCierreStr = '23:00:00';
+    // 3. Horario operativo oficial fijo de YourSelf Music: Lunes a Sábado de 12:00 PM a 11:00 PM (12:00:00 a 23:00:00)
+    const horaAperturaStr = '12:00:00';
+    const horaCierreStr = '23:00:00';
     let reservacionesExistentes: Reservacion[] = [];
 
     try {
-      const { data: horarioData } = await supabase
-        .from('horarios_disponibles')
-        .select('*')
-        .eq('sala_id', salaId)
-        .eq('dia_semana', diaSemana)
-        .maybeSingle();
-
-      const horario = horarioData as unknown as HorarioDisponible | null;
-      if (horario) {
-        horaAperturaStr = horario.hora_apertura;
-        horaCierreStr = horario.hora_cierre;
-      }
-
       // 4. Consultar reservaciones activas para esa sala y fecha
       const { data: resData } = await supabase
         .from('reservaciones')
@@ -299,14 +286,32 @@ export class DatabaseService {
       throw { status: 400, message: `La sala ${dto.sala_id} se encuentra en mantenimiento.` };
     }
 
-    // 2. Validar bloques de horas cerradas
+    // 2. Validar día operativo (Lunes a Sábado; Domingo cerrado) y horario oficial (12:00 PM a 11:00 PM / 12:00 a 23:00)
+    const fechaObj = new Date(`${dto.fecha_reservacion}T12:00:00Z`);
+    if (isNaN(fechaObj.getTime())) {
+      throw { status: 400, message: 'La fecha de reservación no es válida.' };
+    }
+    if (fechaObj.getUTCDay() === 0) {
+      throw {
+        status: 400,
+        message: 'El estudio opera de lunes a sábado de 12:00 PM a 11:00 PM. Los domingos permanece cerrado.',
+      };
+    }
+
     const [startH, startM] = dto.hora_inicio.split(':').map(Number);
     const [endH, endM] = dto.hora_fin.split(':').map(Number);
 
     if (startM !== 0 || endM !== 0 || endH <= startH) {
       throw {
         status: 400,
-        message: 'Las reservaciones deben ser en bloques de horas completas (ej. 14:00:00 a 16:00:00).',
+        message: 'Las reservaciones deben ser en bloques de horas completas (ej. 12:00 a 14:00).',
+      };
+    }
+
+    if (startH < 12 || endH > 23) {
+      throw {
+        status: 400,
+        message: 'El horario de ensayos es de lunes a sábado de 12:00 PM a 11:00 PM (12:00 a 23:00 hrs).',
       };
     }
 

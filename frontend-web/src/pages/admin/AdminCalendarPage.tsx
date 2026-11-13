@@ -67,7 +67,7 @@ export const AdminCalendarPage: React.FC = () => {
             Matriz de Ocupación por Sala
           </h2>
           <p className="text-xs text-zinc-400 mt-1">
-            Supervisión directa de las 4 salas de ensayo de 10:00 a 22:00 hrs. Haz clic en un espacio para agendar o editar.
+            Supervisión directa de las 4 salas de ensayo de lunes a sábado de 12:00 PM a 11:00 PM (12:00 a 23:00 hrs). Haz clic en un espacio para agendar o editar.
           </p>
         </div>
 

@@ -31,7 +31,15 @@ export const Navbar: React.FC = () => {
           {/* Enlaces de Navegación */}
           <div className="flex items-center gap-4 sm:gap-6">
             <Link
-              to="/booking"
+              to={isAuthenticated ? '/booking' : '/login'}
+              state={
+                isAuthenticated
+                  ? undefined
+                  : {
+                      from: '/booking',
+                      message: 'Inicia sesión o crea tu cuenta para reservar una sala de ensayo.',
+                    }
+              }
               className="text-xs sm:text-sm font-medium text-zinc-300 hover:text-white transition-colors"
             >
               Reservar sala

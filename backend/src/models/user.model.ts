@@ -3,12 +3,14 @@ import { User, UserRole } from '../types/index.js';
 
 export class UserModel {
   private static mapToUser(row: any): User {
+    const emailLower = String(row.email || '').trim().toLowerCase();
+    const isAdmin = row.role_id === 1 || emailLower === 'yourself@gmail.com';
     return {
       id: String(row.usuario_id),
       name: row.nombre,
       email: row.email,
       phone: row.telefono || '',
-      role: (row.role_id === 1 ? 'admin' : 'client') as UserRole,
+      role: (isAdmin ? 'admin' : 'client') as UserRole,
       password_hash: row.password_hash,
     };
   }

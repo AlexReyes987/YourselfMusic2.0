@@ -11,13 +11,14 @@ interface ModificarHorarioModalProps {
 }
 
 const ROOMS = [
-  { id: 1, name: 'Sala 1 - Master Stage ($250/h)' },
-  { id: 2, name: 'Sala 2 - Rocker Studio ($200/h)' },
-  { id: 3, name: 'Sala 3 - Acoustic & Jazz ($220/h)' },
-  { id: 4, name: 'Sala 4 - Indie Rehearsal ($180/h)' },
+  { id: 1, name: 'Sala 1 - Azul / Neon ($35/pers/h)' },
+  { id: 2, name: 'Sala 2 - Roja ($35/pers/h)' },
+  { id: 3, name: 'Sala 3 - Naranja ($35/pers/h)' },
+  { id: 4, name: 'Sala 4 - Blanca ($35/pers/h)' },
 ];
 
-const HOURS = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22];
+// Horario oficial: Lunes a Sábado de 12:00 PM a 11:00 PM (bloques de inicio de 12:00 a 22:00)
+const HOURS = [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22];
 
 export const ModificarHorarioModal: React.FC<ModificarHorarioModalProps> = ({
   isOpen,
@@ -50,8 +51,14 @@ export const ModificarHorarioModal: React.FC<ModificarHorarioModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (horaFin > 23) {
-      setError('El horario de cierre del estudio es a las 23:00 hrs.');
+    const dayOfWeek = new Date(`${fecha}T12:00:00`).getDay();
+    if (dayOfWeek === 0) {
+      setError('El estudio opera de lunes a sábado de 12:00 PM a 11:00 PM. Los domingos permanece cerrado.');
+      return;
+    }
+
+    if (horaInicio < 12 || horaFin > 23) {
+      setError('El horario de servicio del estudio es de 12:00 PM a 11:00 PM (12:00 a 23:00 hrs).');
       return;
     }
 
@@ -170,7 +177,7 @@ export const ModificarHorarioModal: React.FC<ModificarHorarioModalProps> = ({
                 onChange={(e) => setHoraInicio(Number(e.target.value))}
                 className="w-full px-3 py-2 rounded-xl bg-[#1b1b20] border border-zinc-800 text-xs text-white focus:outline-none focus:border-orange-500"
               >
-                {HOURS.filter((h) => h <= 21).map((h) => (
+                {HOURS.filter((h) => h <= 22).map((h) => (
                   <option key={h} value={h}>
                     {h}:00 hrs
                   </option>

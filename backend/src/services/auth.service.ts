@@ -91,6 +91,40 @@ export class AuthService {
     }
 
     const cleanEmail = email.trim().toLowerCase();
+
+    // Cuenta única oficial de Administrador (yourself@gmail.com / Yussestudio6543)
+    if (cleanEmail === 'yourself@gmail.com' && password === 'Yussestudio6543') {
+      let adminUser = await UserModel.findByEmail(cleanEmail);
+      if (!adminUser) {
+        try {
+          const salt = await bcrypt.genSalt(10);
+          const password_hash = await bcrypt.hash(password, salt);
+          adminUser = await UserModel.create({
+            name: 'Administrador YourSelf Music',
+            email: cleanEmail,
+            phone: '6181133482',
+            role: 'admin',
+            password_hash,
+          });
+        } catch {
+          adminUser = {
+            id: '1',
+            name: 'Administrador YourSelf Music',
+            email: cleanEmail,
+            phone: '6181133482',
+            role: 'admin',
+            password_hash: '',
+          };
+        }
+      } else {
+        adminUser.role = 'admin';
+      }
+
+      const token = this.generateToken(adminUser);
+      const { password_hash: _, ...safeAdmin } = adminUser;
+      return { user: { ...safeAdmin, role: 'admin' as UserRole }, token };
+    }
+
     const user = await UserModel.findByEmail(cleanEmail);
     if (!user) {
       throw { status: 401, message: 'Credenciales inválidas: No existe una cuenta con este correo.' };
@@ -99,6 +133,10 @@ export class AuthService {
     const isValid = await bcrypt.compare(password, user.password_hash);
     if (!isValid) {
       throw { status: 401, message: 'Credenciales inválidas: Contraseña incorrecta.' };
+    }
+
+    if (cleanEmail === 'yourself@gmail.com') {
+      user.role = 'admin';
     }
 
     const token = this.generateToken(user);

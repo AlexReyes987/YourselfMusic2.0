@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { RoomCard } from '../components/booking/RoomCard';
 import { TimeSlotPicker } from '../components/booking/TimeSlotPicker';
 import { Sala, RangoLibre } from '../types';
@@ -8,6 +8,15 @@ import { reservationService } from '../services/reservationService';
 import { useAuth } from '../context/AuthContext';
 import { Plus, Minus } from 'lucide-react';
 
+// Obtener fecha inicial (si hoy es domingo, sugerir el lunes siguiente)
+function getInitialOperatingDate(): string {
+  const now = new Date();
+  if (now.getDay() === 0) {
+    now.setDate(now.getDate() + 1);
+  }
+  return now.toISOString().split('T')[0];
+}
+
 export const BookingPage: React.FC = () => {
   const navigate = useNavigate();
   const { isAuthenticated, user } = useAuth();
@@ -15,15 +24,13 @@ export const BookingPage: React.FC = () => {
   // Estados principales
   const [salas, setSalas] = useState<Sala[]>([]);
   const [selectedSalaId, setSelectedSalaId] = useState<number>(1);
-  const [selectedDate, setSelectedDate] = useState<string>(() => {
-    return new Date().toISOString().split('T')[0];
-  });
+  const [selectedDate, setSelectedDate] = useState<string>(getInitialOperatingDate);
 
   const [startHour, setStartHour] = useState<number | null>(null);
   const [duration, setDuration] = useState<number>(1);
   const [numMiembros, setNumMiembros] = useState<number>(4);
 
-  // Estados de disponibilidad en tiempo real (12:00 PM a 23:00 PM Lunes a Sábado)
+  // Estados de disponibilidad en tiempo real (12:00 PM a 11:00 PM Lunes a Sábado)
   const [horasLibres, setHorasLibres] = useState<number[]>([]);
   const [rangosLibres, setRangosLibres] = useState<RangoLibre[]>([]);
   const [horaApertura, setHoraApertura] = useState<string>('12:00:00');
@@ -31,8 +38,13 @@ export const BookingPage: React.FC = () => {
   const [isLoadingDisponibilidad, setIsLoadingDisponibilidad] = useState<boolean>(false);
   const [errorDisponibilidad, setErrorDisponibilidad] = useState<string | null>(null);
 
+  const isSunday = Boolean(
+    selectedDate && new Date(`${selectedDate}T12:00:00`).getDay() === 0
+  );
+
   // 1. Cargar las 4 salas de ensayo
   useEffect(() => {
+    if (!isAuthenticated) return;
     async function loadSalas() {
       try {
         const data = await roomService.getAll();
@@ -45,12 +57,25 @@ export const BookingPage: React.FC = () => {
       }
     }
     loadSalas();
-  }, []);
+  }, [isAuthenticated]);
 
   // 2. Consultar disponibilidad cada vez que cambia la sala o la fecha
   useEffect(() => {
+    if (!isAuthenticated) return;
     async function fetchDisponibilidad() {
       if (!selectedSalaId || !selectedDate) return;
+
+      // Si es domingo, el estudio permanece cerrado (servicio de lunes a sábado de 12:00 PM a 11:00 PM)
+      const dayOfWeek = new Date(`${selectedDate}T12:00:00`).getDay();
+      if (dayOfWeek === 0) {
+        setHorasLibres([]);
+        setRangosLibres([]);
+        setStartHour(null);
+        setErrorDisponibilidad(
+          'El estudio opera de lunes a sábado de 12:00 PM a 11:00 PM. Los domingos permanece cerrado.'
+        );
+        return;
+      }
 
       setIsLoadingDisponibilidad(true);
       setErrorDisponibilidad(null);
@@ -74,14 +99,28 @@ export const BookingPage: React.FC = () => {
         const demoLibres = [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22];
         setHorasLibres(demoLibres);
         setRangosLibres([{ hora_inicio: '12:00:00', hora_fin: '23:00:00' }]);
-        if (startHour === null) setStartHour(16);
+        if (startHour === null) setStartHour(12);
       } finally {
         setIsLoadingDisponibilidad(false);
       }
     }
 
     fetchDisponibilidad();
-  }, [selectedSalaId, selectedDate]);
+  }, [selectedSalaId, selectedDate, isAuthenticated]);
+
+  // Si el cliente no ha iniciado sesión, redirigirlo inmediatamente a /login antes de llenar el formulario
+  if (!isAuthenticated) {
+    return (
+      <Navigate
+        to="/login"
+        state={{
+          from: '/booking',
+          message: 'Inicia sesión o crea tu cuenta para reservar una sala de ensayo.',
+        }}
+        replace
+      />
+    );
+  }
 
   const selectedSala = salas.find((s) => s.sala_id === selectedSalaId);
   const maxCapacidad = selectedSala?.capacidad || 9;
@@ -91,7 +130,7 @@ export const BookingPage: React.FC = () => {
   const totalPrice = selectedSala && startHour !== null ? numMiembros * precioPorPersona * duration : 0;
 
   const handleContinueToPayment = () => {
-    if (!selectedSala || startHour === null) return;
+    if (!selectedSala || startHour === null || isSunday) return;
 
     const startTimeFormatted = `${String(startHour).padStart(2, '0')}:00:00`;
     const endTimeFormatted = `${String(startHour + duration).padStart(2, '0')}:00:00`;
@@ -110,23 +149,6 @@ export const BookingPage: React.FC = () => {
       numMiembros,
       totalPrice,
     };
-
-    if (!isAuthenticated) {
-      try {
-        sessionStorage.setItem('pendingBooking', JSON.stringify(bookingPayload));
-      } catch (e) {
-        console.warn('Error guardando en sessionStorage:', e);
-      }
-
-      navigate('/login', {
-        state: {
-          from: '/payment',
-          bookingData: bookingPayload,
-          message: 'Inicia sesión o crea tu cuenta para continuar con tu reservación.',
-        },
-      });
-      return;
-    }
 
     navigate('/payment', {
       state: bookingPayload,
@@ -162,7 +184,7 @@ export const BookingPage: React.FC = () => {
                 className="w-full sm:w-auto px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-white font-medium focus:outline-none focus:border-orange-500 cursor-pointer"
               />
               <span className="text-xs text-zinc-400">
-                Horario de servicio: lunes a sábado de 12:00 a 23:00 hrs.
+                Horario de servicio: lunes a sábado de 12:00 PM a 11:00 PM (12:00 a 23:00 hrs).
               </span>
             </div>
           </div>
@@ -257,7 +279,7 @@ export const BookingPage: React.FC = () => {
           {/* Paso 4: Selección de Horario */}
           <div className="bg-zinc-900/40 border border-zinc-800 p-5 rounded-2xl">
             {errorDisponibilidad && (
-              <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs">
+              <div className="mb-4 p-3 rounded-xl bg-zinc-800/80 border border-zinc-700 text-zinc-300 text-xs">
                 {errorDisponibilidad}
               </div>
             )}
@@ -339,24 +361,42 @@ export const BookingPage: React.FC = () => {
               </div>
             </div>
 
-            {isAuthenticated ? (
-              <p className="text-xs text-zinc-400">
-                Sesión iniciada como <strong className="text-zinc-200">{user?.name || user?.nombre || user?.email}</strong>
-              </p>
-            ) : (
-              <p className="text-xs text-zinc-400">
-                Se te solicitará iniciar sesión en el siguiente paso para confirmar tu reservación.
-              </p>
-            )}
+            <p className="text-xs text-zinc-400">
+              Sesión iniciada como <strong className="text-zinc-200">{user?.name || user?.nombre || user?.email}</strong>
+            </p>
 
             <button
               type="button"
-              disabled={startHour === null || !selectedSala}
+              disabled={startHour === null || !selectedSala || isSunday}
               onClick={handleContinueToPayment}
               className="w-full py-3.5 bg-wine-500 hover:bg-wine-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl border border-wine-400/20 flex items-center justify-center shadow-md shadow-black/40 transition-all cursor-pointer text-sm"
             >
-              {isAuthenticated ? 'Continuar al pago' : 'Continuar'}
+              Continuar al pago
             </button>
+
+            <div className="pt-2 border-t border-zinc-800/80 text-[11px] text-zinc-400 space-y-1">
+              <p className="font-medium text-zinc-300">Contacto directo YourSelf Music:</p>
+              <p>
+                WhatsApp:{' '}
+                <a
+                  href="https://wa.me/526181133482"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-zinc-200 hover:text-orange-400 underline"
+                >
+                  618 113 3482
+                </a>
+              </p>
+              <p>
+                Correo:{' '}
+                <a
+                  href="mailto:yourself_music@hotmail.com"
+                  className="text-zinc-200 hover:text-orange-400 underline"
+                >
+                  yourself_music@hotmail.com
+                </a>
+              </p>
+            </div>
           </div>
         </div>
       </div>

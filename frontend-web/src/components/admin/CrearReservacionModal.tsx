@@ -44,8 +44,20 @@ export const CrearReservacionModal: React.FC<CrearReservacionModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
     setError(null);
+
+    const dayOfWeek = new Date(`${fecha}T12:00:00`).getDay();
+    if (dayOfWeek === 0) {
+      setError('El estudio opera de lunes a sábado de 12:00 PM a 11:00 PM. Los domingos permanece cerrado.');
+      return;
+    }
+
+    if (horaInicio < 12 || horaInicio + duracion > 23) {
+      setError('El horario de ensayos es de 12:00 PM a 11:00 PM (12:00 a 23:00 hrs).');
+      return;
+    }
+
+    setIsSubmitting(true);
 
     const startStr = `${String(horaInicio).padStart(2, '0')}:00:00`;
     const endStr = `${String(horaInicio + duracion).padStart(2, '0')}:00:00`;
