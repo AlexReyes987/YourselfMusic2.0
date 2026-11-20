@@ -1,7 +1,9 @@
 import { supabaseAdmin as supabase } from './supabaseClient';
+import { api } from './api';
 import {
   Sala,
   ReservacionCompleta,
+  extraerNombreBandaDeTexto,
 } from '../types/adminDatabase';
 
 export interface FiltrosReservacion {
@@ -12,6 +14,7 @@ export interface FiltrosReservacion {
 
 export interface CrearReservacionManualDto {
   usuario_id?: string | number;
+  nombre_banda?: string;
   nombre_cliente: string;
   email_cliente?: string;
   telefono_cliente: string;
@@ -202,7 +205,51 @@ export const adminSupabaseService = {
         return this.filtrarMock(filtros);
       }
 
-      return data as unknown as ReservacionCompleta[];
+      // Consultar también auditoría para recuperar el nombre de la banda en reservaciones sin registro de pago aún
+      const mapaBandaAuditoria: Record<string, string> = {};
+      try {
+        const { data: logsAuditoria } = await supabase
+          .from('auditoria')
+          .select('accion')
+          .ilike('accion', '%[BANDA:%')
+          .order('auditoria_id', { ascending: false })
+          .limit(300);
+
+        if (logsAuditoria) {
+          for (const log of logsAuditoria as Array<{ accion?: string }>) {
+            const txt = log.accion || '';
+            const idMatch = txt.match(/\[ID:\s*([^\]]+)\]/i);
+            const bandaMatch = extraerNombreBandaDeTexto(txt);
+            if (idMatch?.[1] && bandaMatch && !mapaBandaAuditoria[idMatch[1].trim()]) {
+              mapaBandaAuditoria[idMatch[1].trim()] = bandaMatch;
+            }
+          }
+        }
+      } catch {
+        // Ignorar si la tabla auditoria no tiene registros
+      }
+
+      const enriquecidas = (data as unknown as ReservacionCompleta[]).map((r) => {
+        let banda = r.nombre_banda;
+        if (!banda && r.pagos && r.pagos.length > 0) {
+          for (const p of r.pagos) {
+            const extraido = extraerNombreBandaDeTexto(p.concepto_pago);
+            if (extraido) {
+              banda = extraido;
+              break;
+            }
+          }
+        }
+        if (!banda) {
+          banda = mapaBandaAuditoria[String(r.reservacion_id)];
+        }
+        return {
+          ...r,
+          nombre_banda: banda || r.usuarios?.nombre || 'Banda',
+        };
+      });
+
+      return enriquecidas;
     } catch (err) {
       console.warn('[adminSupabaseService] Fallback a mocks locales:', err);
       return this.filtrarMock(filtros);
@@ -322,6 +369,7 @@ export const adminSupabaseService = {
     // 3. Insertar reservación
     const monto = dto.monto_total || 140; // 4 miembros * 35 * 1h
     const estado = dto.estado_reservacion || (dto.registrar_pago ? 'confirmed' : 'pending');
+    const nombreBandaFinal = (dto.nombre_banda || dto.nombre_cliente || 'Banda').trim();
 
     const { data: newRes, error: resError } = await supabase
       .from('reservaciones')
@@ -348,6 +396,7 @@ export const adminSupabaseService = {
         hora_fin: dto.hora_fin,
         monto_total: monto,
         estado_reservacion: estado,
+        nombre_banda: nombreBandaFinal,
         usuarios: {
           nombre: dto.nombre_cliente,
           email: dto.email_cliente || 'cliente@estudio.com',
@@ -362,18 +411,34 @@ export const adminSupabaseService = {
       return mockRes;
     }
 
-    // 4. Si se indicó registrar pago
+    const resIdCreada = (newRes as any).reservacion_id;
+
+    // 4. Si se indicó registrar pago, guardar el nombre de la banda en concepto_pago
     if (dto.registrar_pago && newRes) {
       await supabase.from('pagos').insert({
-        reservacion_id: (newRes as any).reservacion_id,
+        reservacion_id: resIdCreada,
         monto: monto,
-        concepto_pago: `Pago administrativo (${dto.metodo_pago || 'card'})`,
+        concepto_pago: `[BANDA: ${nombreBandaFinal}] Pago administrativo (${dto.metodo_pago || 'card'})`.slice(0, 100),
         metodo_pago: dto.metodo_pago || 'card',
         transaccion_id: `ADMIN-${Date.now()}`,
       } as any);
     }
 
-    return newRes as unknown as ReservacionCompleta;
+    // 5. Registrar en auditoría con etiqueta [ID:...] [BANDA:...] para trazabilidad
+    try {
+      await supabase.from('auditoria').insert({
+        usuario_id: usuarioId,
+        accion: `CREAR_RESERVACION_ADMIN: [ID:${resIdCreada}] [BANDA:${nombreBandaFinal}]`.slice(0, 100),
+        tabla_afectada: 'reservaciones',
+      } as any);
+    } catch {
+      // Ignorar si auditoría es opcional
+    }
+
+    return {
+      ...(newRes as unknown as ReservacionCompleta),
+      nombre_banda: nombreBandaFinal,
+    };
   },
 
   /**
@@ -435,6 +500,7 @@ export const adminSupabaseService = {
 
   /**
    * 5. Cancela o elimina una reservación registrando la justificación en la tabla 'cancelaciones'
+   * y ejecutando el reembolso automático a la tarjeta vía Mercado Pago si aplica.
    */
   async cancelarReservacion(
     reservacion_id: string | number,
@@ -442,7 +508,19 @@ export const adminSupabaseService = {
     tarifaMulta: number = 0,
     montoReembolsado: number = 0,
     esMismoDia: boolean = false
-  ): Promise<void> {
+  ): Promise<any> {
+    try {
+      const resp = await api.post(`/reservaciones/${reservacion_id}/cancelar`, {
+        es_admin: true,
+        motivo,
+        tarifa_multa: tarifaMulta,
+        monto_reembolsado: montoReembolsado,
+      });
+      return resp.data;
+    } catch (apiErr) {
+      console.warn('Fallback directo a Supabase para cancelación admin:', apiErr);
+    }
+
     // 1. Cambiar estado a 'cancelled'
     const { error: updateError } = await supabase
       .from('reservaciones')
@@ -475,6 +553,7 @@ export const adminSupabaseService = {
     } catch (cancelErr) {
       console.warn('Nota: Registro en tabla cancelaciones:', cancelErr);
     }
+    return { message: 'Reservación cancelada y registrada en cancelaciones.' };
   },
 
   /**

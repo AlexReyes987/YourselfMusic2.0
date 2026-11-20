@@ -1,5 +1,5 @@
 import React from 'react';
-import { ReservacionCompleta } from '../../types/adminDatabase';
+import { ReservacionCompleta, obtenerNombreBanda } from '../../types/adminDatabase';
 
 interface ScheduleGridProps {
   date: string;
@@ -82,8 +82,7 @@ export const ScheduleGrid: React.FC<ScheduleGridProps> = ({
                     return hour >= startH && hour < endH;
                   });
 
-                  const clienteNombre =
-                    res?.usuarios?.nombre || (res as any)?.cliente_nombre || 'Cliente';
+                  const nombreBanda = res ? obtenerNombreBanda(res) : '';
 
                   return (
                     <td
@@ -94,14 +93,17 @@ export const ScheduleGrid: React.FC<ScheduleGridProps> = ({
                         <button
                           type="button"
                           onClick={() => onSelectReservacion && onSelectReservacion(res)}
-                          className={`w-full p-2 rounded-lg font-medium text-[11px] truncate cursor-pointer transition-all ${
+                          title="Haz clic sobre la banda para ver teléfono, correo y detalles"
+                          className={`w-full p-2.5 rounded-lg font-medium text-[11px] truncate cursor-pointer transition-all ${
                             res.estado_reservacion === 'confirmed'
                               ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30'
                               : 'bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30'
                           }`}
                         >
-                          <span className="font-bold">{clienteNombre}</span>
-                          <span className="block text-[9px] opacity-80 font-mono">
+                          <span className="font-extrabold text-xs block truncate text-white">
+                            {nombreBanda}
+                          </span>
+                          <span className="block text-[10px] opacity-90 font-mono mt-0.5">
                             {res.hora_inicio.slice(0, 5)} - {res.hora_fin.slice(0, 5)}
                           </span>
                         </button>

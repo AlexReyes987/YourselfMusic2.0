@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, AlertTriangle, Trash2, DollarSign, Loader2, FileText } from 'lucide-react';
 import { adminSupabaseService } from '../../services/adminSupabaseService';
-import { ReservacionCompleta } from '../../types/adminDatabase';
+import { ReservacionCompleta, obtenerNombreBanda } from '../../types/adminDatabase';
 import {
   calcularPoliticaCancelacionLocal,
   MULTA_CANCELACION_MXN,
@@ -24,7 +24,7 @@ export const CancelarReservacionModal: React.FC<CancelarReservacionModalProps> =
   const [tarifaMulta, setTarifaMulta] = useState<number>(0);
   const [montoReembolsado, setMontoReembolsado] = useState<number>(0);
   const [aplicaPenalizacion, setAplicaPenalizacion] = useState<boolean>(false);
-  const [diasAnticipacion, setDiasAnticipacion] = useState<number>(0);
+  const [horasAnticipacion, setHorasAnticipacion] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,10 +36,11 @@ export const CancelarReservacionModal: React.FC<CancelarReservacionModalProps> =
       const evaluacion = calcularPoliticaCancelacionLocal(
         reservacion.fecha_reservacion,
         Number(reservacion.monto_total || 0),
-        reservacion.estado_reservacion
+        reservacion.estado_reservacion,
+        reservacion.hora_inicio
       );
 
-      setDiasAnticipacion(evaluacion.dias_anticipacion);
+      setHorasAnticipacion(evaluacion.horas_anticipacion);
       setAplicaPenalizacion(evaluacion.aplica_multa);
       setTarifaMulta(evaluacion.tarifa_multa);
       setMontoReembolsado(evaluacion.monto_reembolsado);
@@ -80,6 +81,7 @@ export const CancelarReservacionModal: React.FC<CancelarReservacionModalProps> =
     }
   };
 
+  const nombreBanda = obtenerNombreBanda(reservacion);
   const clienteNombre = reservacion.usuarios?.nombre || 'Cliente';
 
   return (
@@ -109,7 +111,10 @@ export const CancelarReservacionModal: React.FC<CancelarReservacionModalProps> =
           </p>
           <div className="text-zinc-400 flex flex-wrap gap-x-4 gap-y-1 mt-1">
             <span>
-              Cliente: <strong className="text-white">{clienteNombre}</strong>
+              Banda: <strong className="text-white">{nombreBanda}</strong>
+            </span>
+            <span>
+              Contacto: <span className="text-zinc-200">{clienteNombre}</span>
             </span>
             <span>Sala {reservacion.sala_id}</span>
             <span>
@@ -167,14 +172,12 @@ export const CancelarReservacionModal: React.FC<CancelarReservacionModalProps> =
             />
             <label htmlFor="es_mismo_dia" className="text-xs text-zinc-300 cursor-pointer">
               <strong className="text-white block">
-                Cancelación el mismo día o 1 día antes del ensayo (Multa Fija de ${MULTA_CANCELACION_MXN} MXN por toda la banda)
+                Cancelación dentro de las 24 horas previas al ensayo (Multa Fija de ${MULTA_CANCELACION_MXN} MXN por toda la banda)
               </strong>
               <span className="text-[11px] text-zinc-400">
-                {diasAnticipacion === 0
-                  ? 'Detectado automáticamente: El ensayo es HOY (mismo día).'
-                  : diasAnticipacion === 1
-                  ? 'Detectado automáticamente: El ensayo es MAÑANA (1 día antes).'
-                  : `Faltan ${diasAnticipacion} días para el ensayo.`}
+                {aplicaPenalizacion
+                  ? `Detectado automáticamente: Faltan ${horasAnticipacion} hrs para el inicio del ensayo (dentro del límite de 24 hrs).`
+                  : `Detectado automáticamente: Faltan ${horasAnticipacion} hrs para el inicio del ensayo (más de 24 hrs, libre de multa).`}
               </span>
             </label>
           </div>
@@ -224,6 +227,18 @@ export const CancelarReservacionModal: React.FC<CancelarReservacionModalProps> =
               <span className="text-zinc-400">Monto a devolver al cliente:</span>
               <strong className="text-emerald-400">${montoReembolsado} MXN</strong>
             </div>
+            {montoReembolsado > 0 && (
+              <div className="text-[11px] text-emerald-300/90 pt-0.5">
+                {Array.isArray(reservacion.pagos) &&
+                reservacion.pagos.some(
+                  (p) =>
+                    p?.metodo_pago === 'card' ||
+                    String(p?.transaccion_id || '').startsWith('MP-')
+                )
+                  ? `Pago con tarjeta: Al confirmar, Mercado Pago devolverá automáticamente $${montoReembolsado} MXN a la tarjeta del cliente.`
+                  : `Pago por transferencia SPEI: La devolución de $${montoReembolsado} MXN se realiza manualmente.`}
+              </div>
+            )}
             {adeudoCliente > 0 && (
               <div className="flex justify-between pt-1 border-t border-rose-500/30 text-rose-300">
                 <span>Adeudo registrado en la cuenta del cliente (bloquea nuevas reservas):</span>

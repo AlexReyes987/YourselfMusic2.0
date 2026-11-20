@@ -39,6 +39,27 @@ export interface Reservacion {
   hora_fin: string;
   monto_total: number;
   estado_reservacion: EstadoReservacion;
+  nombre_banda?: string;
+}
+
+export function extraerNombreBandaDeTexto(texto?: string | null): string | null {
+  if (!texto) return null;
+  const match = texto.match(/\[BANDA:\s*([^\]]+)\]/i);
+  return match && match[1] ? match[1].trim() : null;
+}
+
+export function obtenerNombreBanda(res?: ReservacionCompleta | null): string {
+  if (!res) return 'Banda';
+  if (res.nombre_banda && res.nombre_banda.trim()) {
+    return res.nombre_banda.trim();
+  }
+  if (res.pagos && res.pagos.length > 0) {
+    for (const p of res.pagos) {
+      const extraido = extraerNombreBandaDeTexto(p.concepto_pago);
+      if (extraido) return extraido;
+    }
+  }
+  return res.usuarios?.nombre || 'Banda sin nombre';
 }
 
 export interface ReservacionCompleta extends Reservacion {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Clock, Calendar, Music, AlertCircle, Loader2, Check } from 'lucide-react';
 import { adminSupabaseService } from '../../services/adminSupabaseService';
-import { ReservacionCompleta } from '../../types/adminDatabase';
+import { ReservacionCompleta, obtenerNombreBanda } from '../../types/adminDatabase';
 
 interface ModificarHorarioModalProps {
   isOpen: boolean;
@@ -85,7 +85,10 @@ export const ModificarHorarioModal: React.FC<ModificarHorarioModalProps> = ({
     }
   };
 
+  const nombreBanda = obtenerNombreBanda(reservacion);
   const clienteNombre = reservacion.usuarios?.nombre || 'Cliente';
+  const clienteTel = reservacion.usuarios?.telefono || 'Sin teléfono';
+  const clienteEmail = reservacion.usuarios?.email || 'Sin correo';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
@@ -95,9 +98,9 @@ export const ModificarHorarioModal: React.FC<ModificarHorarioModalProps> = ({
           <div className="flex items-center gap-2">
             <Clock className="w-5 h-5 text-orange-400" />
             <div>
-              <h3 className="font-bold text-white text-base">Modificar Horario o Sala</h3>
+              <h3 className="font-bold text-white text-base">Detalles y Horario de Reservación</h3>
               <p className="text-[11px] text-zinc-400">
-                Folio: <span className="font-mono text-zinc-300">{reservacion.reservacion_id}</span>
+                Folio: <span className="font-mono text-zinc-300">#{reservacion.reservacion_id}</span>
               </p>
             </div>
           </div>
@@ -109,14 +112,32 @@ export const ModificarHorarioModal: React.FC<ModificarHorarioModalProps> = ({
           </button>
         </div>
 
-        {/* Resumen de cita actual */}
-        <div className="bg-[#1b1b20]/60 p-3.5 mx-4 mt-4 rounded-xl border border-zinc-800 text-xs space-y-1">
-          <div className="text-zinc-400">
-            Cliente: <strong className="text-white">{clienteNombre}</strong>
+        {/* Resumen de cita actual: Banda principal y datos de contacto secundarios */}
+        <div className="bg-[#1b1b20]/80 p-4 mx-4 mt-4 rounded-xl border border-zinc-800 text-xs space-y-2">
+          <div>
+            <span className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold block">
+              Banda / Proyecto Musical
+            </span>
+            <p className="text-sm font-extrabold text-white mt-0.5">{nombreBanda}</p>
           </div>
-          <div className="text-zinc-400">
-            Agendado originalmente:{' '}
-            <span className="text-orange-400 font-medium">
+
+          <div className="pt-2 border-t border-zinc-800/80 grid grid-cols-1 gap-1 text-[11px] text-zinc-400">
+            <div>
+              Responsable de cuenta: <span className="text-zinc-200 font-medium">{clienteNombre}</span>
+            </div>
+            <div>
+              Teléfono: <span className="text-zinc-200 font-mono">{clienteTel}</span>
+            </div>
+            {clienteEmail && clienteEmail !== 'Sin correo' && (
+              <div>
+                Correo: <span className="text-zinc-300">{clienteEmail}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="pt-2 border-t border-zinc-800/80 text-zinc-400">
+            Horario actual:{' '}
+            <span className="text-orange-400 font-semibold">
               Sala {reservacion.sala_id} • {reservacion.fecha_reservacion} ({reservacion.hora_inicio.slice(0, 5)} - {reservacion.hora_fin.slice(0, 5)})
             </span>
           </div>

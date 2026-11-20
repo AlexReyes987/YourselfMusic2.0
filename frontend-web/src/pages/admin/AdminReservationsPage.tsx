@@ -15,7 +15,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { adminSupabaseService } from '../../services/adminSupabaseService';
-import { ReservacionCompleta } from '../../types/adminDatabase';
+import { ReservacionCompleta, obtenerNombreBanda } from '../../types/adminDatabase';
 import { CrearReservacionModal } from '../../components/admin/CrearReservacionModal';
 import { ModificarHorarioModal } from '../../components/admin/ModificarHorarioModal';
 import { CancelarReservacionModal } from '../../components/admin/CancelarReservacionModal';
@@ -39,6 +39,15 @@ export const AdminReservationsPage: React.FC = () => {
 
   // Mensaje de éxito temporal
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
+  const [bandasExpandidas, setBandasExpandidas] = useState<Record<string, boolean>>({});
+
+  const toggleContactoBanda = (id: string | number) => {
+    const key = String(id);
+    setBandasExpandidas((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
 
   const cargarDatos = useCallback(async () => {
     setLoading(true);
@@ -69,7 +78,7 @@ export const AdminReservationsPage: React.FC = () => {
   const handleConfirmarPago = async (res: ReservacionCompleta) => {
     try {
       await adminSupabaseService.confirmarTransferencia(res.reservacion_id);
-      mostrarExito(`Transferencia de ${res.usuarios?.nombre || 'la reservación'} confirmada.`);
+      mostrarExito(`Transferencia de ${obtenerNombreBanda(res)} confirmada.`);
       cargarDatos();
     } catch (err: any) {
       alert(`Error al confirmar pago: ${err.message}`);
@@ -80,11 +89,13 @@ export const AdminReservationsPage: React.FC = () => {
   const reservacionesFiltradas = reservaciones.filter((r) => {
     if (!busqueda.trim()) return true;
     const term = busqueda.toLowerCase();
+    const banda = obtenerNombreBanda(r).toLowerCase();
     const cliente = r.usuarios?.nombre?.toLowerCase() || '';
     const email = r.usuarios?.email?.toLowerCase() || '';
     const telefono = r.usuarios?.telefono?.toLowerCase() || '';
     const folio = String(r.reservacion_id).toLowerCase();
     return (
+      banda.includes(term) ||
       cliente.includes(term) ||
       email.includes(term) ||
       telefono.includes(term) ||
@@ -171,7 +182,7 @@ export const AdminReservationsPage: React.FC = () => {
           <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-2.5" />
           <input
             type="text"
-            placeholder="Buscar por cliente, folio o tel..."
+            placeholder="Buscar por banda, contacto, folio o tel..."
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
             className="w-full pl-9 pr-3 py-2 rounded-xl bg-[#1b1b20] border border-zinc-800 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500"
@@ -235,7 +246,7 @@ export const AdminReservationsPage: React.FC = () => {
             <thead>
               <tr className="bg-[#1b1b20] border-b border-zinc-800 text-zinc-400 font-semibold">
                 <th className="p-3.5">Folio</th>
-                <th className="p-3.5">Cliente / Contacto</th>
+                <th className="p-3.5">Banda / Contacto</th>
                 <th className="p-3.5">Sala Asignada</th>
                 <th className="p-3.5">Fecha & Horario</th>
                 <th className="p-3.5">Monto & Pago</th>
@@ -259,7 +270,11 @@ export const AdminReservationsPage: React.FC = () => {
                 </tr>
               ) : (
                 reservacionesFiltradas.map((res) => {
-                  const cliente = res.usuarios?.nombre || 'Cliente';
+                  const nombreBanda = obtenerNombreBanda(res);
+                  const cliente = res.usuarios?.nombre || '';
+                  const mostrarResponsable =
+                    Boolean(cliente) &&
+                    cliente.toLowerCase().trim() !== nombreBanda.toLowerCase().trim();
                   const tel = res.usuarios?.telefono || 'Sin teléfono';
                   const email = res.usuarios?.email || 'Sin correo';
                   const salaNombre =
@@ -276,19 +291,37 @@ export const AdminReservationsPage: React.FC = () => {
                         {String(res.reservacion_id).slice(0, 8)}
                       </td>
 
-                      {/* Cliente */}
+                      {/* Banda principal (teléfono y correo ocultos hasta hacer clic sobre la banda) */}
                       <td className="p-3.5">
-                        <div className="font-bold text-white flex items-center gap-1.5">
-                          <User className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-                          <span>{cliente}</span>
-                        </div>
-                        <div className="text-[11px] text-zinc-400 flex items-center gap-1 mt-0.5">
-                          <Phone className="w-3 h-3 text-zinc-500" />
-                          <span>{tel}</span>
-                        </div>
-                        {email && email !== 'Sin correo' && (
-                          <div className="text-[10px] text-zinc-500 truncate max-w-[160px] mt-0.5">
-                            {email}
+                        <button
+                          type="button"
+                          onClick={() => toggleContactoBanda(res.reservacion_id)}
+                          title="Haz clic para ver u ocultar teléfono y correo"
+                          className="font-extrabold text-sm text-white hover:text-orange-400 flex items-center gap-1.5 text-left cursor-pointer transition-colors"
+                        >
+                          <Music className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                          <span className="underline decoration-zinc-700 underline-offset-4 hover:decoration-orange-400">
+                            {nombreBanda}
+                          </span>
+                        </button>
+
+                        {bandasExpandidas[String(res.reservacion_id)] && (
+                          <div className="mt-2 p-2.5 rounded-xl bg-[#1b1b20] border border-zinc-800 space-y-1 text-[11px]">
+                            {mostrarResponsable && (
+                              <div className="text-zinc-300 flex items-center gap-1.5">
+                                <User className="w-3 h-3 text-zinc-500 shrink-0" />
+                                <span>Titular: {cliente}</span>
+                              </div>
+                            )}
+                            <div className="text-zinc-300 flex items-center gap-1.5">
+                              <Phone className="w-3 h-3 text-zinc-500 shrink-0" />
+                              <span>{tel}</span>
+                            </div>
+                            {email && email !== 'Sin correo' && (
+                              <div className="text-zinc-400 truncate max-w-[220px]">
+                                {email}
+                              </div>
+                            )}
                           </div>
                         )}
                       </td>
@@ -414,7 +447,7 @@ export const AdminReservationsPage: React.FC = () => {
         isOpen={isCrearOpen}
         onClose={() => setIsCrearOpen(false)}
         onSuccess={(nueva) => {
-          mostrarExito(`Reservación creada exitosamente para ${nueva.usuarios?.nombre || 'el cliente'}.`);
+          mostrarExito(`Reservación creada exitosamente para ${obtenerNombreBanda(nueva)}.`);
           cargarDatos();
         }}
       />

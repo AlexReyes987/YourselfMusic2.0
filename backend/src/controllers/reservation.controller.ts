@@ -186,7 +186,8 @@ export class ReservationController {
   /**
    * POST /api/reservaciones/:id/cancelar
    * Cancela una reservación aplicando automáticamente la multa fija de $105 MXN
-   * si se cancela el mismo día del ensayo o 1 día antes.
+   * si se cancela dentro de las 24 horas previas al ensayo, y procesa automáticamente
+   * el reembolso a la tarjeta vía Mercado Pago si fue pagada con tarjeta.
    */
   static async cancelar(req: Request, res: Response, next: NextFunction) {
     try {
@@ -203,19 +204,35 @@ export class ReservationController {
         return;
       }
 
+      const tarifaOverride =
+        esAdmin && req.body.tarifa_multa !== undefined ? Number(req.body.tarifa_multa) : undefined;
+      const reembolsoOverride =
+        esAdmin && req.body.monto_reembolsado !== undefined
+          ? Number(req.body.monto_reembolsado)
+          : undefined;
+
       const resultado = await DatabaseService.cancelarReservacionConPolitica({
         reservacion_id: String(reservacionId),
         usuario_id: usuarioId || 1,
         es_admin: esAdmin,
         motivo,
+        tarifa_multa_override: tarifaOverride,
+        monto_reembolsado_override: reembolsoOverride,
       });
 
       const d = resultado.desglose_multa;
+      const rAuto = resultado.reembolso_automatico;
+      const notaReembolso = rAuto?.mensaje
+        ? ` ${rAuto.mensaje}`
+        : d.monto_reembolsado > 0
+        ? ` Monto a reembolsar: $${d.monto_reembolsado} MXN.`
+        : '';
+
       const mensaje = d.aplica_multa
         ? d.adeudo_pendiente > 0
-          ? `Reservación cancelada. Aplica multa de $105.00 MXN (${d.es_mismo_dia ? 'mismo día' : '1 día antes'}). Se retuvieron $${d.monto_retenido} MXN y queda un saldo pendiente de $${d.adeudo_pendiente} MXN.`
-          : `Reservación cancelada. Aplica multa de $105.00 MXN (${d.es_mismo_dia ? 'mismo día' : '1 día antes'}), cubierta con tu pago previo. Monto a reembolsar a tu favor: $${d.monto_reembolsado} MXN.`
-        : `Reservación cancelada con 2 o más días de anticipación (Sin multa: $0 MXN). Monto a reembolsar: $${d.monto_reembolsado} MXN.`;
+          ? `Reservación cancelada (dentro de las 24 horas previas al ensayo). Aplica multa de $105.00 MXN. Se retuvieron $${d.monto_retenido} MXN y queda un saldo pendiente de $${d.adeudo_pendiente} MXN.`
+          : `Reservación cancelada (dentro de las 24 horas previas al ensayo). Aplica multa de $105.00 MXN cubierta con tu pago previo.${notaReembolso}`
+        : `Reservación cancelada con más de 24 horas de anticipación (Sin multa: $0 MXN).${notaReembolso}`;
 
       res.status(200).json({
         success: true,

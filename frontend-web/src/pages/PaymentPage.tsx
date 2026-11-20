@@ -26,6 +26,7 @@ export const PaymentPage: React.FC = () => {
         startHour: number;
         duration: number;
         numMiembros?: number;
+        nombreBanda?: string;
         totalPrice: number;
       }
     | undefined;
@@ -48,6 +49,7 @@ export const PaymentPage: React.FC = () => {
     }
   }, [isAuthenticated, bookingData, navigate]);
 
+  const [nombreBanda, setNombreBanda] = useState(bookingData?.nombreBanda || '');
   const [nombre, setNombre] = useState(user?.name || user?.nombre || '');
   const [email, setEmail] = useState(user?.email || '');
   const [telefono, setTelefono] = useState(user?.phone || user?.telefono || '');
@@ -63,7 +65,6 @@ export const PaymentPage: React.FC = () => {
   const [mpPublicKey, setMpPublicKey] = useState<string>(
     import.meta.env.VITE_MERCADOPAGO_PUBLIC_KEY || ''
   );
-  const [mpSdkReady, setMpSdkReady] = useState<boolean>(false);
 
   useEffect(() => {
     let mounted = true;
@@ -71,11 +72,8 @@ export const PaymentPage: React.FC = () => {
       try {
         await paymentService.cargarSdkMercadoPago();
         const cfg = await paymentService.obtenerPublicKey();
-        if (mounted) {
-          if (cfg.publicKey) {
-            setMpPublicKey(cfg.publicKey);
-          }
-          setMpSdkReady(true);
+        if (mounted && cfg.publicKey) {
+          setMpPublicKey(cfg.publicKey);
         }
       } catch (err) {
         console.warn('[PaymentPage] Error cargando SDK de Mercado Pago:', err);
@@ -195,6 +193,11 @@ export const PaymentPage: React.FC = () => {
       return;
     }
 
+    if (!nombreBanda.trim()) {
+      setErrorMessage('Ingresa el nombre de tu banda o proyecto musical.');
+      return;
+    }
+
     if (paymentMethod === 'card') {
       const cleanNum = cardNumber.replace(/\D/g, '');
       if (cleanNum.length < 15 || cleanNum.length > 16) {
@@ -232,7 +235,8 @@ export const PaymentPage: React.FC = () => {
         return;
       }
 
-      const conceptoReserva = `Ensayo ${bookingData.nombreSala} (${bookingData.fecha} ${bookingData.horaInicio.slice(0, 5)}-${bookingData.horaFin.slice(0, 5)}) - ${numPersonas} integrantes`;
+      const bandaFinal = (nombreBanda || nombre || 'Banda').trim();
+      const conceptoReserva = `[BANDA: ${bandaFinal}] Ensayo ${bookingData.nombreSala} (${bookingData.fecha} ${bookingData.horaInicio.slice(0, 5)}-${bookingData.horaFin.slice(0, 5)}) - ${numPersonas} integrantes`;
 
       if (paymentMethod === 'card') {
         const expiryParts = cardExpiry.split('/');
@@ -255,6 +259,7 @@ export const PaymentPage: React.FC = () => {
         setProcessingStep('Registrando reservación...');
         const resCreated = await reservationService.create({
           usuario_id: usuarioId,
+          nombre_banda: bandaFinal,
           cliente_nombre: nombre,
           cliente_email: user?.email || email,
           cliente_telefono: telefono,
@@ -295,6 +300,7 @@ export const PaymentPage: React.FC = () => {
             date: bookingData.fecha,
             hours: `${bookingData.horaInicio.slice(0, 5)} a ${bookingData.horaFin.slice(0, 5)}`,
             numMiembros: numPersonas,
+            nombreBanda: bandaFinal,
             paymentMethod: 'card',
             cardBrand: tokenData.payment_method_id.toUpperCase(),
             lastFourDigits: mpResult?.recibo?.ultimos_cuatro || tokenData.last_four_digits,
@@ -305,6 +311,7 @@ export const PaymentPage: React.FC = () => {
               mpResult?.mensaje ||
               'Tu pago ha sido aprobado y tu reservación está confirmada.',
             cliente: {
+              nombreBanda: bandaFinal,
               nombre,
               email: user?.email || email,
               telefono,
@@ -319,6 +326,7 @@ export const PaymentPage: React.FC = () => {
 
       const payload = {
         usuario_id: usuarioId,
+        nombre_banda: bandaFinal,
         cliente_nombre: nombre,
         cliente_email: user?.email || email,
         cliente_telefono: telefono,
@@ -354,6 +362,7 @@ export const PaymentPage: React.FC = () => {
           date: bookingData.fecha,
           hours: `${bookingData.horaInicio.slice(0, 5)} a ${bookingData.horaFin.slice(0, 5)}`,
           numMiembros: numPersonas,
+          nombreBanda: bandaFinal,
           paymentMethod: 'transfer',
           totalPrice: bookingData.totalPrice,
           status: statusReservacion,
@@ -361,6 +370,7 @@ export const PaymentPage: React.FC = () => {
           mensajeConfirmacion:
             'Tu reservación ha sido registrada y tu comprobante está en revisión.',
           cliente: {
+            nombreBanda: bandaFinal,
             nombre,
             email: user?.email || email,
             telefono,
@@ -462,53 +472,75 @@ export const PaymentPage: React.FC = () => {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-8">
-        {/* Sección 1: Datos de Contacto del Cliente */}
-        <div className="bg-zinc-900/40 border border-zinc-800 p-6 rounded-2xl space-y-4">
+        {/* Sección 1: Datos de la Banda y Contacto */}
+        <div className="bg-zinc-900/40 border border-zinc-800 p-6 rounded-2xl space-y-5">
           <div className="border-b border-zinc-800 pb-3">
-            <h3 className="text-sm font-bold text-white">1. Datos de contacto</h3>
+            <h3 className="text-sm font-bold text-white">1. Identificación de la banda y contacto</h3>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              El nombre de la banda se mostrará como identificador principal de tu ensayo; tus datos de cuenta quedan registrados como contacto de respaldo.
+            </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="sm:col-span-2 space-y-1.5">
-              <label className="text-xs font-medium text-zinc-300 block">
-                Nombre completo o nombre de la banda
-              </label>
-              <input
-                type="text"
-                required
-                placeholder="Ej. Carlos Mendoza"
-                value={nombre}
-                onChange={(e) => setNombre(e.target.value)}
-                className="w-full px-4 py-2.5 bg-zinc-800/80 border border-zinc-700 rounded-xl text-sm text-white focus:outline-none focus:border-orange-500"
-              />
-            </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-white block">
+              Nombre de la banda o proyecto musical *
+            </label>
+            <input
+              type="text"
+              required
+              placeholder="Ej. Banda Los Alacranes, Ensamble Norte, etc."
+              value={nombreBanda}
+              onChange={(e) => setNombreBanda(e.target.value)}
+              className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-sm font-semibold text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500"
+            />
+          </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-zinc-300 block">
-                Correo electrónico
-              </label>
-              <input
-                type="email"
-                required
-                placeholder="correo@ejemplo.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-2.5 bg-zinc-800/80 border border-zinc-700 rounded-xl text-sm text-white focus:outline-none focus:border-orange-500"
-              />
-            </div>
+          <div className="pt-3 border-t border-zinc-800/80 space-y-3">
+            <span className="text-[11px] font-medium text-zinc-400 block">
+              Datos de contacto del responsable (asociados a tu cuenta):
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <label className="text-[11px] text-zinc-400 block">
+                  Responsable de la cuenta
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Tu nombre"
+                  value={nombre}
+                  onChange={(e) => setNombre(e.target.value)}
+                  className="w-full px-3.5 py-2 bg-zinc-900/80 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-orange-500"
+                />
+              </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-zinc-300 block">
-                Teléfono de contacto (10 dígitos)
-              </label>
-              <input
-                type="tel"
-                required
-                placeholder="618 123 4567"
-                value={telefono}
-                onChange={(e) => setTelefono(e.target.value)}
-                className="w-full px-4 py-2.5 bg-zinc-800/80 border border-zinc-700 rounded-xl text-sm text-white focus:outline-none focus:border-orange-500"
-              />
+              <div className="space-y-1">
+                <label className="text-[11px] text-zinc-400 block">
+                  Teléfono de contacto (10 dígitos)
+                </label>
+                <input
+                  type="tel"
+                  required
+                  placeholder="618 123 4567"
+                  value={telefono}
+                  onChange={(e) => setTelefono(e.target.value)}
+                  className="w-full px-3.5 py-2 bg-zinc-900/80 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-orange-500"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] text-zinc-400 block">
+                  Correo electrónico
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder="correo@ejemplo.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full px-3.5 py-2 bg-zinc-900/80 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-orange-500"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -671,7 +703,7 @@ export const PaymentPage: React.FC = () => {
 
         {/* Nota discreta sobre política de cancelación */}
         <div className="text-xs text-zinc-400 leading-relaxed px-1">
-          <strong className="text-zinc-300">Política de cancelación:</strong> Las cancelaciones realizadas el mismo día del ensayo o un día antes tienen un cargo de ${MULTA_CANCELACION_MXN}.00 MXN en total por la banda. Cancelar con 2 o más días de anticipación no genera ningún costo.
+          <strong className="text-zinc-300">Política de cancelación:</strong> Las cancelaciones realizadas dentro de las 24 horas previas al ensayo tienen un cargo de ${MULTA_CANCELACION_MXN}.00 MXN en total por la banda. Cancelar con más de 24 horas de anticipación no genera ningún costo. En pagos con tarjeta, cualquier saldo a reembolsar se devuelve automáticamente a tu tarjeta a través de Mercado Pago.
         </div>
 
         {adeudoActivo > 0 && (
@@ -692,10 +724,16 @@ export const PaymentPage: React.FC = () => {
           </div>
         )}
 
+        {errorMessage && (
+          <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+            {errorMessage}
+          </div>
+        )}
+
         {/* Botón de Confirmación y Procesamiento */}
         <button
           type="submit"
-          disabled={isProcessing || (paymentMethod === 'card' && !mpSdkReady)}
+          disabled={isProcessing}
           className="w-full py-4 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-xl shadow-orange-500/20 transition-all text-base cursor-pointer"
         >
           {isProcessing ? (
@@ -739,10 +777,10 @@ export const PaymentPage: React.FC = () => {
 
               <div className="p-4 rounded-xl bg-zinc-950/80 border border-zinc-800 space-y-2.5 text-xs text-zinc-300 leading-relaxed">
                 <p>
-                  En caso de cancelar la reservación <strong className="text-white">el mismo día del ensayo o un día antes</strong> (por ejemplo, si el ensayo es el miércoles y se cancela el martes o el miércoles), se aplicará un cargo por cancelación de <strong className="text-orange-400">${MULTA_CANCELACION_MXN}.00 MXN en total por toda la banda</strong>.
+                  En caso de cancelar la reservación <strong className="text-white">dentro de las 24 horas previas a la hora de tu ensayo</strong>, se aplicará un cargo por cancelación de <strong className="text-orange-400">${MULTA_CANCELACION_MXN}.00 MXN en total por toda la banda</strong>.
                 </p>
                 <p className="text-zinc-400">
-                  Este cargo se descuenta del monto pagado y se reembolsa la diferencia (${Math.max(0, bookingData.totalPrice - MULTA_CANCELACION_MXN)} MXN). Si cancelas con 2 o más días de anticipación, la cancelación no tiene ningún costo.
+                  Este cargo se descuenta del monto pagado y la diferencia (${Math.max(0, bookingData.totalPrice - MULTA_CANCELACION_MXN)} MXN) se reembolsa automáticamente a tu tarjeta vía Mercado Pago (o por el administrador en caso de transferencia SPEI). Si cancelas con más de 24 horas de anticipación, la cancelación no tiene ningún costo.
                 </p>
               </div>
 

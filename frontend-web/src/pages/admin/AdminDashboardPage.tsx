@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, DollarSign, Layers, CheckCircle, Clock, Music, ArrowRight, Plus } from 'lucide-react';
 import { adminSupabaseService } from '../../services/adminSupabaseService';
-import { ReservacionCompleta } from '../../types/adminDatabase';
+import { ReservacionCompleta, obtenerNombreBanda } from '../../types/adminDatabase';
 import { Link } from 'react-router-dom';
 import { CrearReservacionModal } from '../../components/admin/CrearReservacionModal';
 
@@ -10,6 +10,15 @@ export const AdminDashboardPage: React.FC = () => {
   const [todasReservaciones, setTodasReservaciones] = useState<ReservacionCompleta[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCrearOpen, setIsCrearOpen] = useState(false);
+  const [bandasExpandidas, setBandasExpandidas] = useState<Record<string, boolean>>({});
+
+  const toggleContactoBanda = (id: string | number) => {
+    const key = String(id);
+    setBandasExpandidas((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
 
   const hoyStr = new Date().toISOString().split('T')[0];
 
@@ -147,8 +156,7 @@ export const AdminDashboardPage: React.FC = () => {
               <tr className="bg-[#1b1b20] border-b border-zinc-800 text-zinc-400 font-semibold">
                 <th className="p-3">Horario</th>
                 <th className="p-3">Sala</th>
-                <th className="p-3">Cliente / Banda</th>
-                <th className="p-3">Teléfono</th>
+                <th className="p-3">Banda</th>
                 <th className="p-3">Monto</th>
                 <th className="p-3 text-center">Estado</th>
               </tr>
@@ -156,35 +164,59 @@ export const AdminDashboardPage: React.FC = () => {
             <tbody className="divide-y divide-zinc-800/60">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="p-6 text-center text-zinc-400">
+                  <td colSpan={5} className="p-6 text-center text-zinc-400">
                     Cargando agenda de hoy...
                   </td>
                 </tr>
               ) : reservacionesHoy.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-6 text-center text-zinc-500">
+                  <td colSpan={5} className="p-6 text-center text-zinc-500">
                     No hay reservaciones programadas para hoy. Haz clic en "Nueva Reserva" para agendar.
                   </td>
                 </tr>
               ) : (
-                reservacionesHoy.map((r) => (
-                  <tr key={r.reservacion_id} className="hover:bg-zinc-800/20">
-                    <td className="p-3 font-mono font-bold text-orange-400">
-                      {r.hora_inicio.slice(0, 5)} - {r.hora_fin.slice(0, 5)}
-                    </td>
-                    <td className="p-3 text-white font-medium flex items-center gap-1.5">
-                      <Music className="w-3.5 h-3.5 text-zinc-400" />
-                      <span>{r.salas?.nombre_sala || `Sala ${r.sala_id}`}</span>
-                    </td>
-                    <td className="p-3 text-zinc-200 font-medium">
-                      {r.usuarios?.nombre || 'Cliente'}
-                    </td>
-                    <td className="p-3 text-zinc-400 font-mono text-[11px]">
-                      {r.usuarios?.telefono || 'N/A'}
-                    </td>
-                    <td className="p-3 font-bold text-emerald-400">
-                      ${r.monto_total} MXN
-                    </td>
+                reservacionesHoy.map((r) => {
+                  const nombreBanda = obtenerNombreBanda(r);
+                  const cliente = r.usuarios?.nombre || '';
+                  const mostrarTitular =
+                    Boolean(cliente) &&
+                    cliente.toLowerCase().trim() !== nombreBanda.toLowerCase().trim();
+
+                  return (
+                    <tr key={r.reservacion_id} className="hover:bg-zinc-800/20">
+                      <td className="p-3 font-mono font-bold text-orange-400">
+                        {r.hora_inicio.slice(0, 5)} - {r.hora_fin.slice(0, 5)}
+                      </td>
+                      <td className="p-3 text-white font-medium flex items-center gap-1.5">
+                        <Music className="w-3.5 h-3.5 text-zinc-400" />
+                        <span>{r.salas?.nombre_sala || `Sala ${r.sala_id}`}</span>
+                      </td>
+                      <td className="p-3">
+                        <button
+                          type="button"
+                          onClick={() => toggleContactoBanda(r.reservacion_id)}
+                          title="Haz clic para ver teléfono y correo"
+                          className="text-white hover:text-orange-400 font-bold underline decoration-zinc-700 underline-offset-4 hover:decoration-orange-400 cursor-pointer text-left transition-colors"
+                        >
+                          {nombreBanda}
+                        </button>
+                        {bandasExpandidas[String(r.reservacion_id)] && (
+                          <div className="mt-1.5 p-2 rounded-xl bg-[#1b1b20] border border-zinc-800 space-y-0.5 text-[11px] font-normal">
+                            {mostrarTitular && (
+                              <div className="text-zinc-300">Titular: {cliente}</div>
+                            )}
+                            <div className="text-zinc-300 font-mono">
+                              Tel: {r.usuarios?.telefono || 'Sin teléfono'}
+                            </div>
+                            {r.usuarios?.email && (
+                              <div className="text-zinc-400">{r.usuarios.email}</div>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td className="p-3 font-bold text-emerald-400">
+                        ${r.monto_total} MXN
+                      </td>
                     <td className="p-3 text-center">
                       <span
                         className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
@@ -203,7 +235,8 @@ export const AdminDashboardPage: React.FC = () => {
                       </span>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>

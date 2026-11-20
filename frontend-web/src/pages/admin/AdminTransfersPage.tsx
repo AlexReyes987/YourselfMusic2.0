@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { CheckCircle2, XCircle, ShieldCheck, RotateCcw, AlertTriangle, Loader2, DollarSign, Calendar, Music } from 'lucide-react';
 import { adminSupabaseService } from '../../services/adminSupabaseService';
-import { ReservacionCompleta } from '../../types/adminDatabase';
+import { ReservacionCompleta, obtenerNombreBanda } from '../../types/adminDatabase';
 
 export const AdminTransfersPage: React.FC = () => {
   const [reservaciones, setReservaciones] = useState<ReservacionCompleta[]>([]);
@@ -13,6 +13,15 @@ export const AdminTransfersPage: React.FC = () => {
   const [resARechazar, setResARechazar] = useState<ReservacionCompleta | null>(null);
   const [motivoRechazo, setMotivoRechazo] = useState('Comprobante SPEI no coincide con el estado de cuenta bancario.');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [bandasExpandidas, setBandasExpandidas] = useState<Record<string, boolean>>({});
+
+  const toggleContactoBanda = (id: string | number) => {
+    const key = String(id);
+    setBandasExpandidas((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
 
   const cargarTransferencias = useCallback(async () => {
     setLoading(true);
@@ -150,6 +159,7 @@ export const AdminTransfersPage: React.FC = () => {
                 reservaciones.map((item) => {
                   const pago = item.pagos?.[0];
                   const ref = pago?.transaccion_id || `SPEI-${String(item.reservacion_id).slice(0, 6)}`;
+                  const nombreBanda = obtenerNombreBanda(item);
                   const clienteNombre = item.usuarios?.nombre || 'Cliente';
                   const salaNombre = item.salas?.nombre_sala || `Sala ${item.sala_id}`;
                   const isPending = item.estado_reservacion === 'pending';
@@ -158,8 +168,27 @@ export const AdminTransfersPage: React.FC = () => {
                     <tr key={item.reservacion_id} className="hover:bg-zinc-800/20 transition-colors">
                       <td className="p-3.5 font-mono font-bold text-orange-400">{ref}</td>
                       <td className="p-3.5">
-                        <div className="font-semibold text-white">{clienteNombre}</div>
-                        <div className="text-[11px] text-zinc-500">{item.usuarios?.telefono || item.usuarios?.email}</div>
+                        <button
+                          type="button"
+                          onClick={() => toggleContactoBanda(item.reservacion_id)}
+                          title="Haz clic para ver teléfono y correo"
+                          className="font-extrabold text-white hover:text-orange-400 underline decoration-zinc-700 underline-offset-4 hover:decoration-orange-400 cursor-pointer text-left transition-colors"
+                        >
+                          {nombreBanda}
+                        </button>
+                        {bandasExpandidas[String(item.reservacion_id)] && (
+                          <div className="mt-1.5 p-2 rounded-xl bg-[#1b1b20] border border-zinc-800 space-y-0.5 text-[11px]">
+                            {clienteNombre.toLowerCase().trim() !== nombreBanda.toLowerCase().trim() && (
+                              <div className="text-zinc-300">Titular: {clienteNombre}</div>
+                            )}
+                            <div className="text-zinc-300 font-mono">
+                              Tel: {item.usuarios?.telefono || 'Sin teléfono'}
+                            </div>
+                            {item.usuarios?.email && (
+                              <div className="text-zinc-400">{item.usuarios.email}</div>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td className="p-3.5 text-zinc-300">
                         <div className="font-medium flex items-center gap-1">

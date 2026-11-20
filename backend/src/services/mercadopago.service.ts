@@ -430,26 +430,59 @@ export class MercadoPagoService {
       .select()
       .single();
 
-    // 7. Registrar el pago verificado en la tabla 'pagos' de Supabase
-    const conceptoPagoFinal = esLiquidacionMulta
-      ? `LIQUIDACION_MULTA_CANCELACION Reserva #${dto.reservacion_id} [${metodoPagoMarca.toUpperCase()} ****${ultimosCuatro || '****'}]`
-      : `${descripcionCargo} [${metodoPagoMarca.toUpperCase()} ****${ultimosCuatro || '****'}]`;
+    // 7. Registrar el pago verificado en la tabla 'pagos' de Supabase (respetando límite VARCHAR(100))
+    const conceptoPagoFinal = (
+      esLiquidacionMulta
+        ? `LIQUIDACION_MULTA Reserva #${dto.reservacion_id} [${metodoPagoMarca.toUpperCase()} ****${ultimosCuatro || '****'}]`
+        : `${descripcionCargo}`
+    ).slice(0, 100);
 
-    const { data: pagoRegistrado } = await (supabase.from('pagos') as any)
-      .insert({
-        reservacion_id: Number(dto.reservacion_id) || dto.reservacion_id,
-        monto: montoCobrar,
-        concepto_pago: conceptoPagoFinal,
-        metodo_pago: 'card',
-        transaccion_id: `MP-${mpTransactionId}`,
-      })
-      .select()
-      .single();
+    const transaccionIdFinal = (
+      mpOrderId && mpOrderId !== mpTransactionId
+        ? `MP-${mpTransactionId}|${mpOrderId}`
+        : `MP-${mpTransactionId}`
+    ).slice(0, 100);
 
-    // 8. Registrar en auditoría
+    const { data: pagoExistente } = await (supabase.from('pagos') as any)
+      .select('pago_id')
+      .eq('reservacion_id', dto.reservacion_id)
+      .not('concepto_pago', 'ilike', '%LIQUIDACION_MULTA%')
+      .maybeSingle();
+
+    let pagoRegistrado: any = null;
+    if (pagoExistente && !esLiquidacionMulta) {
+      const { data: updatedPago } = await (supabase.from('pagos') as any)
+        .update({
+          monto: montoCobrar,
+          concepto_pago: conceptoPagoFinal,
+          metodo_pago: 'card',
+          transaccion_id: transaccionIdFinal,
+        })
+        .eq('pago_id', pagoExistente.pago_id)
+        .select()
+        .maybeSingle();
+      pagoRegistrado = updatedPago;
+    } else {
+      const { data: insertedPago, error: insertPagoErr } = await (supabase.from('pagos') as any)
+        .insert({
+          reservacion_id: Number(dto.reservacion_id) || dto.reservacion_id,
+          monto: montoCobrar,
+          concepto_pago: conceptoPagoFinal,
+          metodo_pago: 'card',
+          transaccion_id: transaccionIdFinal,
+        })
+        .select()
+        .maybeSingle();
+      if (insertPagoErr) {
+        console.error('[MercadoPagoService] Error insertando en tabla pagos:', insertPagoErr.message);
+      }
+      pagoRegistrado = insertedPago;
+    }
+
+    // 8. Registrar en auditoría (máx 100 caracteres)
     await DatabaseService.registrarAuditoria(
       reservacionDB.usuario_id,
-      `PAGO_MP_${mpStatus.toUpperCase()} (${apiUtilizada.toUpperCase()}): Reserva #${dto.reservacion_id} actualizada automáticamente a '${nuevoEstadoReserva}'. Transacción MP: ${mpTransactionId}${mpOrderId ? ` (Order: ${mpOrderId})` : ''}, Monto: $${montoCobrar} MXN`,
+      `PAGO_MP_${mpStatus.toUpperCase()} #${dto.reservacion_id} ${transaccionIdFinal} $${montoCobrar}`,
       'pagos'
     );
 
@@ -493,6 +526,273 @@ export class MercadoPagoService {
         cliente_nombre: reservacionDB.usuarios?.nombre || dto.payer?.first_name || 'Cliente',
         cliente_email: payerEmail,
       },
+    };
+  }
+
+  /**
+   * Procesa un reembolso automático (parcial o total) directamente a la tarjeta del cliente
+   * a través de la API oficial de Refunds de Mercado Pago (soporta v1/orders y v1/payments).
+   */
+  static async reembolsarPagoTarjeta(params: {
+    reservacion_id: number | string;
+    transaccion_id: string;
+    concepto_pago?: string;
+    monto_original: number;
+    monto_reembolsar: number;
+    usuario_id?: number | string;
+  }): Promise<{
+    ejecutado: boolean;
+    metodo: 'mercadopago_card';
+    refund_id?: string;
+    mp_status?: string;
+    monto_reembolsado: number;
+    es_parcial: boolean;
+    mensaje: string;
+    error_detalle?: string;
+  }> {
+    const montoReembolsar = Number(params.monto_reembolsar || 0);
+    const montoOriginal = Number(params.monto_original || 0);
+    const esParcial = montoReembolsar < montoOriginal;
+
+    if (montoReembolsar <= 0) {
+      return {
+        ejecutado: false,
+        metodo: 'mercadopago_card',
+        monto_reembolsado: 0,
+        es_parcial: false,
+        mensaje: 'No hay saldo a favor por reembolsar en esta cancelación.',
+      };
+    }
+
+    const accessToken = ENV.MERCADOPAGO.ACCESS_TOKEN;
+    if (
+      !accessToken ||
+      accessToken.includes('REEMPLAZA') ||
+      (!accessToken.startsWith('APP_USR-') && !accessToken.startsWith('TEST-'))
+    ) {
+      return {
+        ejecutado: false,
+        metodo: 'mercadopago_card',
+        monto_reembolsado: montoReembolsar,
+        es_parcial: esParcial,
+        mensaje: `Reembolso de $${montoReembolsar} MXN pendiente: MERCADOPAGO_ACCESS_TOKEN no configurado.`,
+      };
+    }
+
+    const rawClean = String(params.transaccion_id || '')
+      .replace(/^MP-/i, '')
+      .trim();
+
+    // Soportar formato "PAY01...|ORD01..." o ID individual
+    const [firstPart, secondPart] = rawClean.split('|').map((s) => s.trim());
+    let payTransactionId = firstPart || '';
+    const ordMatch = String(params.concepto_pago || '').match(/\[ORD:\s*([^\]]+)\]/i);
+    let orderId =
+      (secondPart && secondPart.startsWith('ORD') ? secondPart : '') ||
+      ordMatch?.[1]?.trim() ||
+      (payTransactionId.startsWith('ORD') ? payTransactionId : '');
+    let numericPaymentId = /^\d+$/.test(payTransactionId) ? payTransactionId : '';
+
+    // 1. Consultar en Mercado Pago (/v1/payments/search?external_reference=...) para obtener
+    // tanto el payment_id numérico real (ej. 190639476928) como la referencia ORDER_MP (ORD01...)
+    try {
+      const searchResp = await fetch(
+        `https://api.mercadopago.com/v1/payments/search?external_reference=${encodeURIComponent(
+          String(params.reservacion_id)
+        )}`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (searchResp.ok) {
+        const searchData: any = await searchResp.json().catch(() => ({}));
+        const results: any[] = Array.isArray(searchData?.results) ? searchData.results : [];
+        const matchingPayment =
+          results.find((p) => p.status === 'approved' || p.status === 'accredited') || results[0];
+
+        if (matchingPayment) {
+          if (matchingPayment.id && !numericPaymentId) {
+            numericPaymentId = String(matchingPayment.id);
+          }
+          if (!orderId && Array.isArray(matchingPayment.point_of_interaction?.references)) {
+            const ordRef = matchingPayment.point_of_interaction.references.find(
+              (ref: any) =>
+                ref?.type === 'ORDER_MP' || String(ref?.id || '').startsWith('ORD')
+            );
+            if (ordRef?.id) {
+              orderId = String(ordRef.id).trim();
+            }
+          }
+        }
+      }
+    } catch (searchErr: any) {
+      console.warn('[MercadoPagoService] Aviso en búsqueda de pago por external_reference:', searchErr?.message);
+    }
+
+    // 2. Si aún no tenemos orderId ni numericPaymentId, buscar en /v1/orders con rango de fechas
+    if (!orderId && !numericPaymentId) {
+      try {
+        const beginDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+        const endDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+        const ordersSearchUrl = `https://api.mercadopago.com/v1/orders?external_reference=${encodeURIComponent(
+          String(params.reservacion_id)
+        )}&begin_date=${encodeURIComponent(beginDate)}&end_date=${encodeURIComponent(endDate)}`;
+
+        const ordSearchResp = await fetch(ordersSearchUrl, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (ordSearchResp.ok) {
+          const ordSearchData: any = await ordSearchResp.json().catch(() => ({}));
+          const foundOrder = Array.isArray(ordSearchData?.data) ? ordSearchData.data[0] : null;
+          if (foundOrder?.id) {
+            orderId = String(foundOrder.id).trim();
+            const firstPay = foundOrder.transactions?.payments?.[0];
+            if (firstPay?.id && !payTransactionId.startsWith('PAY')) {
+              payTransactionId = String(firstPay.id).trim();
+            }
+          }
+        }
+      } catch {
+        // Ignorar error de búsqueda secundaria
+      }
+    }
+
+    let refundApproved = false;
+    let refundId = '';
+    let refundStatus = '';
+    let errorApiMsg = '';
+
+    try {
+      // INTENTO PRINCIPAL A: Si tenemos el ID numérico de pago (/v1/payments/{id}/refunds)
+      // Este endpoint de Mercado Pago soporta tanto reembolsos parciales ({ amount }) como totales ({})
+      if (numericPaymentId) {
+        const paymentRefundBody = esParcial
+          ? { amount: Number(montoReembolsar.toFixed(2)) }
+          : {};
+
+        const payRefundResp = await fetch(
+          `https://api.mercadopago.com/v1/payments/${encodeURIComponent(numericPaymentId)}/refunds`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+              'X-Idempotency-Key': crypto.randomUUID(),
+            },
+            body: JSON.stringify(paymentRefundBody),
+          }
+        );
+
+        const payRefundData: any = await payRefundResp.json().catch(() => ({}));
+
+        if (payRefundResp.ok || payRefundData?.id || payRefundData?.status === 'approved') {
+          refundApproved = true;
+          refundId = String(payRefundData?.id || `REF-MP-${Date.now()}`);
+          refundStatus = String(payRefundData?.status || 'approved');
+        } else {
+          errorApiMsg =
+            payRefundData?.cause?.[0]?.description ||
+            payRefundData?.message ||
+            `HTTP ${payRefundResp.status}`;
+        }
+      }
+
+      // INTENTO PRINCIPAL B: Endpoint oficial de API de Orders (/v1/orders/{order_id}/refund en singular)
+      if (!refundApproved && orderId) {
+        const orderRefundBody =
+          esParcial && payTransactionId.startsWith('PAY')
+            ? {
+                transactions: [
+                  {
+                    id: payTransactionId,
+                    amount: montoReembolsar.toFixed(2),
+                  },
+                ],
+              }
+            : {};
+
+        const orderRefundResp = await fetch(
+          `https://api.mercadopago.com/v1/orders/${encodeURIComponent(orderId)}/refund`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+              'X-Idempotency-Key': crypto.randomUUID(),
+            },
+            body: JSON.stringify(orderRefundBody),
+          }
+        );
+
+        const orderRefundData: any = await orderRefundResp.json().catch(() => ({}));
+        const refundRoot = orderRefundData?.data || orderRefundData;
+
+        if (
+          orderRefundResp.ok ||
+          refundRoot?.status === 'refunded' ||
+          refundRoot?.status === 'processed' ||
+          refundRoot?.status === 'approved' ||
+          refundRoot?.transactions?.refunds?.length
+        ) {
+          refundApproved = true;
+          refundId = String(
+            refundRoot?.transactions?.refunds?.[0]?.id ||
+              refundRoot?.id ||
+              `REF-ORD-${Date.now()}`
+          );
+          refundStatus = String(refundRoot?.status || 'refunded');
+        } else if (!errorApiMsg) {
+          errorApiMsg =
+            orderRefundData?.errors?.[0]?.message ||
+            orderRefundData?.message ||
+            `HTTP ${orderRefundResp.status}`;
+        }
+      }
+    } catch (err: any) {
+      errorApiMsg = err?.message || 'Error de conexión con la API de reembolsos de Mercado Pago.';
+    }
+
+    if (refundApproved) {
+      await DatabaseService.registrarAuditoria(
+        params.usuario_id || 1,
+        `REEMBOLSO_MP_AUTOMATICO: Reserva #${params.reservacion_id}. Reembolso ${esParcial ? 'parcial' : 'total'} de $${montoReembolsar} MXN (de $${montoOriginal} MXN) enviado automáticamente a la tarjeta vía Mercado Pago (Refund ID: ${refundId}, Transacción original: ${params.transaccion_id}).`,
+        'cancelaciones'
+      );
+
+      return {
+        ejecutado: true,
+        metodo: 'mercadopago_card',
+        refund_id: refundId,
+        mp_status: refundStatus,
+        monto_reembolsado: montoReembolsar,
+        es_parcial: esParcial,
+        mensaje: `Se ha procesado automáticamente el reembolso ${esParcial ? 'parcial' : 'total'} de $${montoReembolsar}.00 MXN a la tarjeta a través de Mercado Pago (Folio de reembolso: ${refundId}).`,
+      };
+    }
+
+    await DatabaseService.registrarAuditoria(
+      params.usuario_id || 1,
+      `REEMBOLSO_MP_ADVERTENCIA: Reserva #${params.reservacion_id}. No se pudo completar el reembolso automático de $${montoReembolsar} MXN para transacción ${params.transaccion_id}. Detalle: ${errorApiMsg}`,
+      'cancelaciones'
+    );
+
+    return {
+      ejecutado: false,
+      metodo: 'mercadopago_card',
+      monto_reembolsado: montoReembolsar,
+      es_parcial: esParcial,
+      error_detalle: errorApiMsg,
+      mensaje: `La reservación fue cancelada con un monto a reembolsar de $${montoReembolsar}.00 MXN (Aviso de pasarela: ${errorApiMsg || 'Revisión manual en panel de Mercado Pago'}).`,
     };
   }
 
@@ -662,9 +962,14 @@ export class MercadoPagoService {
       const paymentStatus = String(firstPayment?.status || '').toLowerCase();
 
       reservacionId = mpOrder?.external_reference;
-      mpTransactionId = `MP-${firstPayment?.id || mpOrder?.id}`;
+      mpTransactionId =
+        firstPayment?.id && mpOrder?.id && firstPayment.id !== mpOrder.id
+          ? `MP-${firstPayment.id}|${mpOrder.id}`
+          : `MP-${firstPayment?.id || mpOrder?.id}`;
       montoCobrado = Number(mpOrder?.total_amount || firstPayment?.amount || 0);
-      descripcionPago = mpOrder?.description || `Pago aprobado vía Webhook API de Orders (${mpTransactionId})`;
+      descripcionPago = String(
+        mpOrder?.description || `Pago aprobado vía Webhook (${mpTransactionId})`
+      ).slice(0, 100);
 
       if (
         orderStatus === 'processed' ||
@@ -736,9 +1041,9 @@ export class MercadoPagoService {
         await (supabase.from('pagos') as any).insert({
           reservacion_id: Number(reservacionId) || reservacionId,
           monto: montoCobrado,
-          concepto_pago: descripcionPago,
+          concepto_pago: String(descripcionPago || 'Pago Mercado Pago').slice(0, 100),
           metodo_pago: 'card',
-          transaccion_id: mpTransactionId,
+          transaccion_id: String(mpTransactionId || '').slice(0, 100),
         });
       }
 

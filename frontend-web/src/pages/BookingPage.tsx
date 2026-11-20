@@ -29,6 +29,7 @@ export const BookingPage: React.FC = () => {
   const [startHour, setStartHour] = useState<number | null>(null);
   const [duration, setDuration] = useState<number>(1);
   const [numMiembros, setNumMiembros] = useState<number>(4);
+  const [nombreBanda, setNombreBanda] = useState<string>('');
 
   // Estados de disponibilidad en tiempo real (12:00 PM a 11:00 PM Lunes a Sábado)
   const [horasLibres, setHorasLibres] = useState<number[]>([]);
@@ -147,6 +148,7 @@ export const BookingPage: React.FC = () => {
       startHour,
       duration,
       numMiembros,
+      nombreBanda: nombreBanda.trim(),
       totalPrice,
     };
 
@@ -210,16 +212,33 @@ export const BookingPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Paso 3: Especificar Integrantes / Miembros Asistentes */}
-          <div className="bg-zinc-900/40 border border-zinc-800 p-5 rounded-2xl space-y-4">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-bold text-white">
-                3. Número de integrantes que asistirán
+          {/* Paso 3: Datos de la Banda e Integrantes */}
+          <div className="bg-zinc-900/40 border border-zinc-800 p-5 rounded-2xl space-y-5">
+            <div className="space-y-2">
+              <label className="block text-sm font-bold text-white">
+                3. Nombre de la banda o proyecto musical
               </label>
-              <span className="text-xs text-zinc-400">
-                Máximo {maxCapacidad} músicos
-              </span>
+              <input
+                type="text"
+                placeholder="Ej. Banda Los Alacranes, Ensamble Norte, etc."
+                value={nombreBanda}
+                onChange={(e) => setNombreBanda(e.target.value)}
+                className="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500"
+              />
+              <p className="text-[11px] text-zinc-400">
+                Este nombre aparecerá como identificador principal de tu reservación en el estudio.
+              </p>
             </div>
+
+            <div className="pt-4 border-t border-zinc-800/80 space-y-4">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-bold text-white">
+                  Número de integrantes que asistirán
+                </label>
+                <span className="text-xs text-zinc-400">
+                  Máximo {maxCapacidad} músicos
+                </span>
+              </div>
 
             <p className="text-xs text-zinc-400">
               La tarifa es de <strong className="text-zinc-200">$35 MXN por persona por hora</strong>.
@@ -266,13 +285,14 @@ export const BookingPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between text-xs">
-              <span className="text-zinc-400">
-                Tarifa por hora ({numMiembros} × $35 MXN):
-              </span>
-              <span className="font-semibold text-zinc-200">
-                ${numMiembros * precioPorPersona} MXN / hora
-              </span>
+              <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between text-xs">
+                <span className="text-zinc-400">
+                  Tarifa por hora ({numMiembros} × $35 MXN):
+                </span>
+                <span className="font-semibold text-zinc-200">
+                  ${numMiembros * precioPorPersona} MXN / hora
+                </span>
+              </div>
             </div>
           </div>
 
@@ -308,6 +328,13 @@ export const BookingPage: React.FC = () => {
             </div>
 
             <div className="space-y-3.5 text-xs sm:text-sm">
+              <div className="flex justify-between items-start">
+                <span className="text-zinc-400">Banda:</span>
+                <span className="font-bold text-white text-right">
+                  {nombreBanda.trim() ? nombreBanda.trim() : 'Por definir'}
+                </span>
+              </div>
+
               <div className="flex justify-between items-start">
                 <span className="text-zinc-400">Sala:</span>
                 <span className="font-semibold text-white text-right">

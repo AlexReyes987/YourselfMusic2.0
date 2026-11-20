@@ -161,7 +161,8 @@ export const MyReservationsPage: React.FC = () => {
       calcularPoliticaCancelacionLocal(
         resToCancel.fecha_reservacion || resToCancel.date,
         Number(resToCancel.monto_total ?? resToCancel.total_price ?? 0),
-        resToCancel.estado_reservacion || resToCancel.status || 'confirmed'
+        resToCancel.estado_reservacion || resToCancel.status || 'confirmed',
+        resToCancel.hora_inicio || resToCancel.start_time || '12:00:00'
       )
     : null;
 
@@ -187,7 +188,7 @@ export const MyReservationsPage: React.FC = () => {
       {/* Nota discreta de política de cancelación y contacto directo */}
       <div className="space-y-1.5 text-xs text-zinc-400 leading-relaxed">
         <p>
-          <strong className="text-zinc-300">Política de cancelación:</strong> Las cancelaciones realizadas el mismo día del ensayo o un día antes generan un cargo de ${MULTA_CANCELACION_MXN}.00 MXN por toda la banda. Cancelar con 2 o más días de anticipación no tiene costo.
+          <strong className="text-zinc-300">Política de cancelación:</strong> Las cancelaciones realizadas dentro de las 24 horas previas al ensayo generan un cargo de ${MULTA_CANCELACION_MXN}.00 MXN por toda la banda. Cancelar con más de 24 horas de anticipación no tiene costo. En pagos con tarjeta, el reembolso correspondiente se devuelve automáticamente a tu tarjeta vía Mercado Pago.
         </p>
         <p>
           <strong className="text-zinc-300">Contacto directo YourSelf Music:</strong>{' '}
@@ -302,6 +303,7 @@ export const MyReservationsPage: React.FC = () => {
           {reservations.map((res) => {
             const id = res.reservacion_id || res.id;
             const salaNombre = res.nombre_sala || `Sala ${res.sala_id}`;
+            const nombreBanda = res.nombre_banda || null;
             const fecha = res.fecha_reservacion || res.date;
             const hInicio = (res.hora_inicio || res.start_time || '').slice(0, 5);
             const hFin = (res.hora_fin || res.end_time || '').slice(0, 5);
@@ -319,7 +321,12 @@ export const MyReservationsPage: React.FC = () => {
               >
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2.5">
-                    <span className="font-bold text-white text-sm sm:text-base">
+                    {nombreBanda && (
+                      <span className="font-extrabold text-white text-sm sm:text-base">
+                        {nombreBanda} —
+                      </span>
+                    )}
+                    <span className="font-bold text-zinc-200 text-sm sm:text-base">
                       {salaNombre}
                     </span>
                     <span
@@ -438,6 +445,18 @@ export const MyReservationsPage: React.FC = () => {
                     <span>Monto a reembolsar:</span>
                     <strong className="text-emerald-400">${evaluacionSeleccionada.monto_reembolsado} MXN</strong>
                   </div>
+                  {evaluacionSeleccionada.monto_reembolsado > 0 && (
+                    <div className="text-[11px] text-emerald-300/90 pt-1">
+                      {Array.isArray(resToCancel.pagos) &&
+                      resToCancel.pagos.some(
+                        (p: any) =>
+                          p?.metodo_pago === 'card' ||
+                          String(p?.transaccion_id || '').startsWith('MP-')
+                      )
+                        ? `Se reembolsarán automáticamente $${evaluacionSeleccionada.monto_reembolsado}.00 MXN a tu tarjeta a través de Mercado Pago.`
+                        : `Al haber pagado por transferencia SPEI, el reembolso de $${evaluacionSeleccionada.monto_reembolsado}.00 MXN será gestionado por el administrador.`}
+                    </div>
+                  )}
                   {evaluacionSeleccionada.adeudo_pendiente > 0 && (
                     <div className="flex justify-between pt-1.5 border-t border-zinc-800 text-rose-300">
                       <span>Saldo pendiente por cubrir:</span>

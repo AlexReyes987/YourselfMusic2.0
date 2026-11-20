@@ -17,6 +17,7 @@ export const ConfirmationPage: React.FC = () => {
         date?: string;
         hours?: string;
         numMiembros?: number;
+        nombreBanda?: string;
         paymentMethod?: string;
         cardBrand?: string;
         lastFourDigits?: string;
@@ -25,6 +26,7 @@ export const ConfirmationPage: React.FC = () => {
         fechaPago?: string;
         mensajeConfirmacion?: string;
         cliente?: {
+          nombreBanda?: string;
           nombre?: string;
           email?: string;
           telefono?: string;
@@ -37,6 +39,7 @@ export const ConfirmationPage: React.FC = () => {
   const isConfirmed = state?.status === 'confirmed' || state?.paymentMethod === 'card';
   const emailCuenta = user?.email || state?.cliente?.email || '';
   const nombreCliente = state?.cliente?.nombre || user?.name || user?.nombre || 'Cliente YourSelf Music';
+  const nombreBanda = state?.nombreBanda || state?.cliente?.nombreBanda || nombreCliente;
   const metodoPagoTexto =
     state?.paymentMethod === 'card'
       ? `Tarjeta ${state?.cardBrand || 'bancaria'}`
@@ -142,8 +145,13 @@ export const ConfirmationPage: React.FC = () => {
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-zinc-400">Titular:</span>
-              <span className="font-semibold text-white">{nombreCliente}</span>
+              <span className="text-zinc-400">Banda o proyecto:</span>
+              <span className="font-extrabold text-white">{nombreBanda}</span>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-zinc-400">Responsable de la cuenta:</span>
+              <span className="font-medium text-zinc-200">{nombreCliente}</span>
             </div>
 
             {emailCuenta && (

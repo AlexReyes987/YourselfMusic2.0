@@ -6,6 +6,7 @@ export const MULTA_CANCELACION_MXN = 105;
 export interface EvaluacionCancelacionCliente {
   fecha_hoy: string;
   fecha_reservacion: string;
+  horas_anticipacion: number;
   dias_anticipacion: number;
   es_mismo_dia: boolean;
   es_un_dia_antes: boolean;
@@ -20,29 +21,39 @@ export interface EvaluacionCancelacionCliente {
 
 /**
  * Calcula en el cliente la política oficial de cancelación de YourSelf Music:
- * - Si se cancela el MISMO DÍA del ensayo (dias_anticipacion === 0) o UN DÍA ANTES (dias_anticipacion === 1),
+ * - Si se cancela DENTRO DE LAS 24 HORAS PREVIAS al inicio del ensayo (horas_anticipacion <= 24),
  *   se cobra una multa fija de $105.00 MXN en total por toda la banda.
- * - Si se cancela con 2 o más días de anticipación (dias_anticipacion >= 2), la multa es $0 MXN.
+ * - Si se cancela con MÁS DE 24 HORAS de anticipación (horas_anticipacion > 24), la multa es $0 MXN.
  */
 export function calcularPoliticaCancelacionLocal(
   fechaReservacion: string,
   montoTotal: number,
-  estadoReservacion: string = 'confirmed'
+  estadoReservacion: string = 'confirmed',
+  horaInicio: string = '12:00:00'
 ): EvaluacionCancelacionCliente {
   const hoyStr = new Date().toLocaleDateString('en-CA', {
     timeZone: 'America/Mexico_City',
   });
 
   const [yR, mR, dR] = String(fechaReservacion).slice(0, 10).split('-').map(Number);
-  const [yH, mH, dH] = hoyStr.split('-').map(Number);
+  const [hR, minR] = String(horaInicio || '12:00:00').split(':').map(Number);
 
-  const utcReserva = Date.UTC(yR, (mR || 1) - 1, dR || 1);
-  const utcHoy = Date.UTC(yH, (mH || 1) - 1, dH || 1);
-  const diasAnticipacion = Math.round((utcReserva - utcHoy) / (1000 * 60 * 60 * 24));
+  const fechaHoraEnsayo = new Date(
+    yR,
+    (mR || 1) - 1,
+    dR || 1,
+    isNaN(hR) ? 12 : hR,
+    isNaN(minR) ? 0 : minR,
+    0
+  );
+  const ahora = new Date();
+  const diffMs = fechaHoraEnsayo.getTime() - ahora.getTime();
+  const horasAnticipacion = Math.max(0, Math.round((diffMs / (1000 * 60 * 60)) * 10) / 10);
+  const diasAnticipacion = Math.max(0, Math.floor(horasAnticipacion / 24));
 
-  const esMismoDia = diasAnticipacion === 0;
-  const esUnDiaAntes = diasAnticipacion === 1;
-  const aplicaMulta = esMismoDia || esUnDiaAntes;
+  const aplicaMulta = diffMs <= 24 * 60 * 60 * 1000;
+  const esMismoDia = String(fechaReservacion).slice(0, 10) <= hoyStr;
+  const esUnDiaAntes = !esMismoDia && aplicaMulta;
   const tarifaMulta = aplicaMulta ? MULTA_CANCELACION_MXN : 0;
 
   const montoPagadoOriginal = estadoReservacion === 'confirmed' ? Number(montoTotal || 0) : 0;
@@ -53,6 +64,7 @@ export function calcularPoliticaCancelacionLocal(
   return {
     fecha_hoy: hoyStr,
     fecha_reservacion: fechaReservacion,
+    horas_anticipacion: horasAnticipacion,
     dias_anticipacion: diasAnticipacion,
     es_mismo_dia: esMismoDia,
     es_un_dia_antes: esUnDiaAntes,
@@ -63,10 +75,8 @@ export function calcularPoliticaCancelacionLocal(
     monto_reembolsado: montoReembolsado,
     adeudo_pendiente: adeudoPendiente,
     explicacion: aplicaMulta
-      ? esMismoDia
-        ? 'Cancelación el mismo día del ensayo: Aplica una multa fija de $105.00 MXN en total por toda la banda.'
-        : 'Cancelación 1 día antes del ensayo: Aplica una multa fija de $105.00 MXN en total por toda la banda.'
-      : 'Cancelación con 2 o más días de anticipación: Sin cargo de multa ($0.00 MXN).',
+      ? 'Cancelación dentro de las 24 horas previas al ensayo: Aplica una multa fija de $105.00 MXN en total por toda la banda.'
+      : 'Cancelación con más de 24 horas de anticipación: Sin cargo de multa ($0.00 MXN).',
   };
 }
 

@@ -1,4 +1,5 @@
 import { supabaseAdmin as supabase } from '../config/supabaseClient.js';
+import { MercadoPagoService } from './mercadopago.service.js';
 import {
   Sala,
   Reservacion,
@@ -35,6 +36,8 @@ export interface DisponibilidadResponse {
 
 export interface CrearReservacionConPagoDto {
   usuario_id: number | string;
+  nombre_banda?: string;
+  cliente_nombre?: string;
   sala_id: number;
   fecha_reservacion: string; // YYYY-MM-DD
   hora_inicio: string; // HH:00:00
@@ -457,20 +460,31 @@ export class DatabaseService {
 
     // 7. Insertar en tabla pagos
     let pagoCreado: Pago | undefined = undefined;
+    const nombreBandaFinal = (
+      dto.nombre_banda ||
+      dto.cliente_nombre ||
+      usuarioRealNombre ||
+      'Banda'
+    ).trim();
 
     if (dto.pago) {
       const transaccionId =
         dto.pago.transaccion_id ||
         `TXN-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
 
+      const conceptoBase =
+        dto.pago.concepto_pago ||
+        `Reserva ${sala.nombre_sala} (${dto.fecha_reservacion} ${dto.hora_inicio}-${dto.hora_fin}) - ${numPersonas} personas`;
+      const conceptoConBanda = conceptoBase.includes('[BANDA:')
+        ? conceptoBase
+        : `[BANDA: ${nombreBandaFinal}] ${conceptoBase}`;
+
       const pagoPayload: PagoInsert = {
         reservacion_id: reservacionCreada.reservacion_id as any,
         monto: dto.pago.monto ?? montoTotal,
-        concepto_pago:
-          dto.pago.concepto_pago ||
-          `Reserva ${sala.nombre_sala} (${dto.fecha_reservacion} ${dto.hora_inicio}-${dto.hora_fin}) - ${numPersonas} personas`,
+        concepto_pago: conceptoConBanda.slice(0, 100),
         metodo_pago: dto.pago.metodo_pago,
-        transaccion_id: transaccionId,
+        transaccion_id: String(transaccionId).slice(0, 100),
       };
 
       try {
@@ -506,15 +520,18 @@ export class DatabaseService {
       }
     }
 
-    // 8. Registrar en auditoría
+    // 8. Registrar en auditoría con etiqueta [ID:...] [BANDA:...]
     await this.registrarAuditoria(
       validUsuarioId,
-      `CREAR_RESERVACION: Cliente ${usuarioRealNombre} (${usuarioRealEmail}) Sala ${dto.sala_id} fecha ${dto.fecha_reservacion} (${dto.hora_inicio}-${dto.hora_fin}) Personas: ${numPersonas} Monto: ${montoTotal} Estado: ${estadoInicial}`,
+      `CREAR_RESERVACION: [ID:${reservacionCreada.reservacion_id}] [BANDA:${nombreBandaFinal}] Cliente ${usuarioRealNombre} (${usuarioRealEmail}) Sala ${dto.sala_id} fecha ${dto.fecha_reservacion} (${dto.hora_inicio}-${dto.hora_fin}) Personas: ${numPersonas} Monto: ${montoTotal} Estado: ${estadoInicial}`,
       'reservaciones'
     );
 
     return {
-      reservacion: reservacionCreada,
+      reservacion: {
+        ...reservacionCreada,
+        nombre_banda: nombreBandaFinal,
+      } as any,
       pago: pagoCreado,
     };
   }
@@ -548,11 +565,24 @@ export class DatabaseService {
           Number(r.monto_total || 0),
           r.estado_reservacion,
           r.pagos || [],
-          r.cancelaciones || []
+          r.cancelaciones || [],
+          r.hora_inicio
         );
+
+        let nombreBanda = r.nombre_banda || null;
+        if (!nombreBanda && Array.isArray(r.pagos)) {
+          for (const p of r.pagos) {
+            const match = String(p?.concepto_pago || '').match(/\[BANDA:\s*([^\]]+)\]/i);
+            if (match?.[1]) {
+              nombreBanda = match[1].trim();
+              break;
+            }
+          }
+        }
 
         return {
           ...r,
+          nombre_banda: nombreBanda || undefined,
           nombre_sala: r.salas?.nombre_sala || `Sala ${r.sala_id}`,
           politica_cancelacion: evaluacionCancelacion,
         };
@@ -565,18 +595,18 @@ export class DatabaseService {
 
   /**
    * Regla Oficial de Cancelación YourSelf Music:
-   * - Si la reservación se cancela el MISMO DÍA del ensayo (diasDiferencia === 0)
-   *   o UN DÍA ANTES del ensayo (diasDiferencia === 1), se aplica una multa fija
-   *   de $105.00 MXN en total por toda la banda.
-   * - Si se cancela con 2 o más días de anticipación (diasDiferencia >= 2),
-   *   la multa es de $0.00 MXN.
+   * - Si la reservación se cancela DENTRO DE LAS 24 HORAS PREVIAS al inicio del ensayo
+   *   (horasAnticipacion <= 24), se aplica una multa fija de $105.00 MXN en total por toda la banda.
+   * - Si se cancela con MÁS DE 24 HORAS de anticipación (horasAnticipacion > 24),
+   *   la multa es de $0.00 MXN (reembolso del 100%).
    */
   static evaluarPoliticaCancelacion(
     fechaReservacion: string,
     montoTotal: number,
     estadoReservacion: string,
     pagos: any[] = [],
-    cancelaciones: any[] = []
+    cancelaciones: any[] = [],
+    horaInicio: string = '12:00:00'
   ) {
     const MULTA_OFICIAL_MXN = 105;
 
@@ -586,20 +616,28 @@ export class DatabaseService {
     });
 
     const [yR, mR, dR] = String(fechaReservacion).slice(0, 10).split('-').map(Number);
-    const [yH, mH, dH] = hoyStr.split('-').map(Number);
+    const [hR, minR] = String(horaInicio || '12:00:00').split(':').map(Number);
 
-    const utcReserva = Date.UTC(yR, (mR || 1) - 1, dR || 1);
-    const utcHoy = Date.UTC(yH, (mH || 1) - 1, dH || 1);
-    const diasAnticipacion = Math.round((utcReserva - utcHoy) / (1000 * 60 * 60 * 24));
+    const fechaHoraEnsayo = new Date(
+      yR,
+      (mR || 1) - 1,
+      dR || 1,
+      isNaN(hR) ? 12 : hR,
+      isNaN(minR) ? 0 : minR,
+      0
+    );
+    const ahora = new Date();
+    const diffMs = fechaHoraEnsayo.getTime() - ahora.getTime();
+    const horasAnticipacion = Math.max(0, Math.round((diffMs / (1000 * 60 * 60)) * 10) / 10);
+    const diasAnticipacion = Math.max(0, Math.floor(horasAnticipacion / 24));
 
-    // Aplica multa si se cancela el mismo día (0) o 1 día antes (1)
-    const aplicaMulta = diasAnticipacion === 0 || diasAnticipacion === 1;
-    const esMismoDia = diasAnticipacion === 0;
-    const esUnDiaAntes = diasAnticipacion === 1;
+    // Aplica multa únicamente si se cancela dentro de las 24 horas previas al ensayo
+    const aplicaMulta = diffMs <= 24 * 60 * 60 * 1000;
+    const esMismoDia = String(fechaReservacion).slice(0, 10) <= hoyStr;
+    const esUnDiaAntes = !esMismoDia && aplicaMulta;
     const tarifaMulta = aplicaMulta ? MULTA_OFICIAL_MXN : 0;
 
     // Calcular cuánto dinero real ya está acreditado en la reservación
-    // (Si estaba 'confirmed', el pago inicial fue acreditado; o si hay pagos de LIQUIDACION_MULTA o MP-)
     const pagosLiquidacionMulta = (pagos || []).filter((p: any) =>
       String(p?.concepto_pago || '').toUpperCase().includes('LIQUIDACION_MULTA')
     );
@@ -640,6 +678,7 @@ export class DatabaseService {
     return {
       fecha_hoy: hoyStr,
       fecha_reservacion: fechaReservacion,
+      horas_anticipacion: horasAnticipacion,
       dias_anticipacion: diasAnticipacion,
       es_mismo_dia: esMismoDia,
       es_un_dia_antes: esUnDiaAntes,
@@ -651,10 +690,8 @@ export class DatabaseService {
       monto_liquidado_extra: montoLiquidadoMultaExtra,
       adeudo_pendiente: estadoReservacion === 'cancelled' ? adeudoPendiente : Math.max(0, tarifaMulta - Math.min(montoPagadoOriginal, tarifaMulta)),
       explicacion: aplicaMulta
-        ? esMismoDia
-          ? 'Cancelación el mismo día del ensayo: Aplica multa fija de $105.00 MXN por toda la banda.'
-          : 'Cancelación 1 día antes del ensayo: Aplica multa fija de $105.00 MXN por toda la banda.'
-        : 'Cancelación con 2 o más días de anticipación: Libre de multa ($0.00 MXN).',
+        ? 'Cancelación dentro de las 24 horas previas al ensayo: Aplica multa fija de $105.00 MXN por toda la banda.'
+        : 'Cancelación con más de 24 horas de anticipación: Libre de multa ($0.00 MXN).',
     };
   }
 
@@ -706,13 +743,16 @@ export class DatabaseService {
 
   /**
    * Cancela una reservación aplicando automáticamente la política de multa de $105 MXN
-   * si se cancela el mismo día del ensayo o 1 día antes.
+   * si se cancela dentro de las 24 horas previas al ensayo, y procesa automáticamente
+   * el reembolso a la tarjeta mediante la API de Mercado Pago si fue pagada con tarjeta.
    */
   static async cancelarReservacionConPolitica(params: {
     reservacion_id: number | string;
     usuario_id: number | string;
     es_admin?: boolean;
     motivo?: string;
+    tarifa_multa_override?: number;
+    monto_reembolsado_override?: number;
   }) {
     const { data: resRaw, error: resErr } = await (supabase.from('reservaciones') as any)
       .select(`
@@ -739,14 +779,26 @@ export class DatabaseService {
       throw { status: 400, message: 'Esta reservación ya se encuentra cancelada.' };
     }
 
-    // Evaluar política de cancelación oficial ($105 MXN mismo día o 1 día antes)
+    // Evaluar política de cancelación oficial ($105 MXN dentro de las 24 horas previas al ensayo)
     const evaluacion = this.evaluarPoliticaCancelacion(
       reservacion.fecha_reservacion,
       Number(reservacion.monto_total || 0),
       reservacion.estado_reservacion,
       reservacion.pagos || [],
-      []
+      [],
+      reservacion.hora_inicio
     );
+
+    if (typeof params.tarifa_multa_override === 'number' && !isNaN(params.tarifa_multa_override)) {
+      evaluacion.tarifa_multa = params.tarifa_multa_override;
+      evaluacion.aplica_multa = params.tarifa_multa_override > 0;
+      evaluacion.monto_retenido = Math.min(evaluacion.monto_pagado_original, evaluacion.tarifa_multa);
+      evaluacion.monto_reembolsado =
+        typeof params.monto_reembolsado_override === 'number' && !isNaN(params.monto_reembolsado_override)
+          ? params.monto_reembolsado_override
+          : Math.max(0, evaluacion.monto_pagado_original - evaluacion.tarifa_multa);
+      evaluacion.adeudo_pendiente = Math.max(0, evaluacion.tarifa_multa - evaluacion.monto_retenido);
+    }
 
     // 1. Actualizar estado de la reservación a 'cancelled'
     const { error: updateErr } = await (supabase.from('reservaciones') as any)
@@ -762,17 +814,51 @@ export class DatabaseService {
       .insert({
         reservacion_id: Number(params.reservacion_id) || params.reservacion_id,
         tarifa_multa: evaluacion.tarifa_multa,
-        es_mismo_dia: evaluacion.aplica_multa, // true si aplica penalización (mismo día o 1 día antes)
+        es_mismo_dia: evaluacion.aplica_multa,
         monto_reembolsado: evaluacion.monto_reembolsado,
       })
       .select()
       .single();
 
-    // 3. Registrar en auditoría con desglose completo
+    // 3. Si existe un monto a reembolsar (> $0 MXN) y el pago se hizo con tarjeta (Mercado Pago),
+    // ejecutar el reembolso automático a la tarjeta mediante la API de Mercado Pago.
+    const pagoOriginal = (reservacion.pagos || []).find(
+      (p: any) => !String(p?.concepto_pago || '').toUpperCase().includes('LIQUIDACION_MULTA')
+    );
+
+    const esPagoTarjeta =
+      pagoOriginal &&
+      (pagoOriginal.metodo_pago === 'card' ||
+        pagoOriginal.metodo_pago === 'tarjeta' ||
+        String(pagoOriginal.transaccion_id || '').startsWith('MP-'));
+
+    let reembolsoAutomatico: any = null;
+
+    if (evaluacion.monto_reembolsado > 0) {
+      if (esPagoTarjeta && pagoOriginal?.transaccion_id) {
+        reembolsoAutomatico = await MercadoPagoService.reembolsarPagoTarjeta({
+          reservacion_id: params.reservacion_id,
+          transaccion_id: String(pagoOriginal.transaccion_id),
+          concepto_pago: pagoOriginal.concepto_pago,
+          monto_original: Number(pagoOriginal.monto || reservacion.monto_total || 0),
+          monto_reembolsar: evaluacion.monto_reembolsado,
+          usuario_id: reservacion.usuario_id,
+        });
+      } else {
+        reembolsoAutomatico = {
+          ejecutado: false,
+          metodo: 'transfer_manual',
+          monto_reembolsado: evaluacion.monto_reembolsado,
+          mensaje: `El reembolso de $${evaluacion.monto_reembolsado}.00 MXN por transferencia SPEI queda registrado para devolución manual por el administrador.`,
+        };
+      }
+    }
+
+    // 4. Registrar en auditoría con desglose completo
     const motivoTexto = params.motivo?.trim() || 'Cancelación solicitada por el cliente';
     await this.registrarAuditoria(
       reservacion.usuario_id,
-      `CANCELACION_${evaluacion.aplica_multa ? 'CON_MULTA_105' : 'SIN_MULTA'}: Reserva #${params.reservacion_id} (${reservacion.fecha_reservacion}). Multa: $${evaluacion.tarifa_multa} MXN | Retenido: $${evaluacion.monto_retenido} MXN | Reembolsado: $${evaluacion.monto_reembolsado} MXN | Adeudo Pendiente: $${evaluacion.adeudo_pendiente} MXN. Motivo: ${motivoTexto}`,
+      `CANCELACION_${evaluacion.aplica_multa ? 'CON_MULTA_105' : 'SIN_MULTA'}: Reserva #${params.reservacion_id} (${reservacion.fecha_reservacion} ${reservacion.hora_inicio}). Multa: $${evaluacion.tarifa_multa} MXN | Retenido: $${evaluacion.monto_retenido} MXN | Reembolsado: $${evaluacion.monto_reembolsado} MXN${reembolsoAutomatico?.ejecutado ? ` [REEMBOLSO_AUTO_MP: ${reembolsoAutomatico.refund_id}]` : ''} | Adeudo Pendiente: $${evaluacion.adeudo_pendiente} MXN. Motivo: ${motivoTexto}`,
       'cancelaciones'
     );
 
@@ -781,6 +867,7 @@ export class DatabaseService {
       estado_reservacion: 'cancelled',
       cancelacion: cancelacionCreada,
       desglose_multa: evaluacion,
+      reembolso_automatico: reembolsoAutomatico,
     };
   }
 
@@ -838,8 +925,8 @@ export class DatabaseService {
 
       await supabase.from('auditoria').insert({
         usuario_id: uid,
-        accion,
-        tabla_afectada: tablaAfectada,
+        accion: String(accion || '').slice(0, 100),
+        tabla_afectada: String(tablaAfectada || '').slice(0, 50),
       } as any);
     } catch (err: any) {
       console.warn('[DatabaseService.registrarAuditoria] Error registrando auditoría:', err.message);

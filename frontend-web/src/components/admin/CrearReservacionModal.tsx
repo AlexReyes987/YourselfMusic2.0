@@ -23,6 +23,7 @@ export const CrearReservacionModal: React.FC<CrearReservacionModalProps> = ({
   initialHour = 14,
   initialDate,
 }) => {
+  const [nombreBanda, setNombreBanda] = useState('');
   const [nombreCliente, setNombreCliente] = useState('');
   const [telefonoCliente, setTelefonoCliente] = useState('');
   const [emailCliente, setEmailCliente] = useState('');
@@ -63,8 +64,11 @@ export const CrearReservacionModal: React.FC<CrearReservacionModalProps> = ({
     const endStr = `${String(horaInicio + duracion).padStart(2, '0')}:00:00`;
 
     try {
+      const bandaFinal = (nombreBanda || nombreCliente || 'Banda').trim();
+      const responsableFinal = (nombreCliente || nombreBanda || 'Cliente').trim();
       const nueva = await adminSupabaseService.crearReservacionManual({
-        nombre_cliente: nombreCliente,
+        nombre_banda: bandaFinal,
+        nombre_cliente: responsableFinal,
         telefono_cliente: telefonoCliente,
         email_cliente: emailCliente,
         sala_id: salaId,
@@ -111,21 +115,35 @@ export const CrearReservacionModal: React.FC<CrearReservacionModalProps> = ({
             </div>
           )}
 
-          {/* Datos del Cliente */}
+          {/* Datos de la Banda y Contacto */}
           <div className="space-y-3">
             <h4 className="text-xs font-bold text-zinc-300 uppercase tracking-wider">
-              Datos del Músico o Banda
+              Identificación de la Banda y Contacto
             </h4>
 
             <div className="space-y-1">
-              <label className="text-xs text-zinc-400 flex items-center gap-1">
-                <User className="w-3.5 h-3.5" />
-                <span>Nombre o Banda *</span>
+              <label className="text-xs font-semibold text-white flex items-center gap-1">
+                <Music className="w-3.5 h-3.5 text-orange-400" />
+                <span>Nombre de la Banda o Proyecto Musical *</span>
               </label>
               <input
                 type="text"
                 required
-                placeholder="Ej. Banda Los Alacranes / Roberto Gómez"
+                placeholder="Ej. Banda Los Alacranes"
+                value={nombreBanda}
+                onChange={(e) => setNombreBanda(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl bg-[#1b1b20] border border-zinc-800 text-xs font-semibold text-white focus:outline-none focus:border-orange-500"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs text-zinc-400 flex items-center gap-1">
+                <User className="w-3.5 h-3.5" />
+                <span>Nombre del Responsable (Contacto)</span>
+              </label>
+              <input
+                type="text"
+                placeholder="Ej. Roberto Gómez"
                 value={nombreCliente}
                 onChange={(e) => setNombreCliente(e.target.value)}
                 className="w-full px-3 py-2 rounded-xl bg-[#1b1b20] border border-zinc-800 text-xs text-white focus:outline-none focus:border-orange-500"
