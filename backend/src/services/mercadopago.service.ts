@@ -1099,27 +1099,27 @@ export class MercadoPagoService {
 
     const htmlRecibo = `
       <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #121318; color: #f4f4f5; border-radius: 16px; overflow: hidden; border: 1px solid #27272a;">
-        <div style="background: linear-gradient(135deg, #f97316, #ea580c); padding: 24px; text-align: center;">
+        <div style="background: linear-gradient(135deg, #7a1c29, #54111b); padding: 24px; text-align: center;">
           <h1 style="margin: 0; font-size: 24px; color: #ffffff; font-weight: 800;">YourSelf Music</h1>
-          <p style="margin: 4px 0 0; font-size: 13px; color: #ffedd5;">Recibo Oficial de Pago y Confirmación de Sala</p>
+          <p style="margin: 4px 0 0; font-size: 13px; color: #f4d6da;">Recibo Oficial de Pago y Confirmación de Sala</p>
         </div>
 
         <div style="padding: 28px;">
           <div style="background-color: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 12px; padding: 14px; text-align: center; margin-bottom: 24px;">
-            <strong style="color: #34d399; font-size: 15px;">✓ PAGO APROBADO Y RESERVACIÓN CONFIRMADA</strong>
+            <strong style="color: #34d399; font-size: 15px;">PAGO APROBADO Y RESERVACIÓN CONFIRMADA</strong>
           </div>
 
           <p style="font-size: 14px; color: #d4d4d8; margin-bottom: 20px;">
-            Hola <strong style="color: #ffffff;">${dto.nombre_cliente}</strong>, adjuntamos los detalles de tu comprobante de pago procesado de forma segura a través de Mercado Pago:
+            Hola <strong style="color: #ffffff;">${dto.nombre_cliente}</strong>, adjuntamos los detalles de tu comprobante de pago de YourSelf Music:
           </p>
 
           <table style="width: 100%; border-collapse: collapse; font-size: 14px; background-color: #18181b; border-radius: 12px; overflow: hidden;">
             <tr style="border-bottom: 1px solid #27272a;">
               <td style="padding: 12px 16px; color: #a1a1aa;">Folio de Reservación:</td>
-              <td style="padding: 12px 16px; text-align: right; color: #fb923c; font-weight: 700; font-family: monospace;">#${dto.folio}</td>
+              <td style="padding: 12px 16px; text-align: right; color: #e28794; font-weight: 700; font-family: monospace;">#${dto.folio}</td>
             </tr>
             <tr style="border-bottom: 1px solid #27272a;">
-              <td style="padding: 12px 16px; color: #a1a1aa;">ID Transacción Mercado Pago:</td>
+              <td style="padding: 12px 16px; color: #a1a1aa;">Número de Operación:</td>
               <td style="padding: 12px 16px; text-align: right; color: #e4e4e7; font-family: monospace;">${dto.transaccion_id}</td>
             </tr>
             <tr style="border-bottom: 1px solid #27272a;">
@@ -1148,8 +1148,14 @@ export class MercadoPagoService {
             </tr>
           </table>
 
-          <p style="font-size: 12px; color: #71717a; text-align: center; margin-top: 24px;">
-            YourSelf Music Estudio • Durango, Dgo., México<br/>
+          <div style="margin-top: 22px; padding: 14px 16px; background-color: #18181b; border: 1px solid #27272a; border-radius: 12px; font-size: 12px; color: #a1a1aa; text-align: center;">
+            <strong style="color: #e4e4e7; display: block; margin-bottom: 4px;">Contacto directo YourSelf Music</strong>
+            WhatsApp / Teléfono: <a href="https://wa.me/526181133482" style="color: #e28794; text-decoration: none;">618 113 3482</a> &nbsp;•&nbsp;
+            Correo: <a href="mailto:yourself_music@hotmail.com" style="color: #e28794; text-decoration: none;">yourself_music@hotmail.com</a>
+          </div>
+
+          <p style="font-size: 12px; color: #71717a; text-align: center; margin-top: 20px;">
+            YourSelf Music Estudio • Av. Gral. Lázaro Cárdenas 305, Durango, Dgo., México<br/>
             Presenta este comprobante o tu número de folio al llegar a recepción.
           </p>
         </div>
@@ -1159,15 +1165,27 @@ export class MercadoPagoService {
     try {
       let transporter: any;
       let isEthereal = false;
+      const smtpUser = (ENV.SMTP.USER || '').trim();
+      const smtpPass = (ENV.SMTP.PASS || '').trim();
+      const isHotmailOrOutlook = /@(hotmail|outlook|live|msn)\./i.test(smtpUser);
+      const resolvedHost = isHotmailOrOutlook
+        ? 'smtp-mail.outlook.com'
+        : ENV.SMTP.HOST || 'smtp.gmail.com';
+      const resolvedPort = ENV.SMTP.PORT || 587;
 
-      if (ENV.SMTP.USER && ENV.SMTP.PASS && ENV.SMTP.PASS.trim() !== '' && !ENV.SMTP.PASS.includes('tu_contrasena')) {
+      if (smtpUser && smtpPass && !smtpPass.includes('tu_contrasena')) {
         transporter = nodemailer.createTransport({
-          host: ENV.SMTP.HOST,
-          port: ENV.SMTP.PORT,
-          secure: ENV.SMTP.PORT === 465,
+          host: resolvedHost,
+          port: resolvedPort,
+          secure: resolvedPort === 465,
+          requireTLS: resolvedPort === 587,
+          tls: {
+            ciphers: 'SSLv3',
+            rejectUnauthorized: false,
+          },
           auth: {
-            user: ENV.SMTP.USER,
-            pass: ENV.SMTP.PASS,
+            user: smtpUser,
+            pass: smtpPass,
           },
         });
       } else {
@@ -1185,8 +1203,14 @@ export class MercadoPagoService {
         isEthereal = true;
       }
 
+      // El remitente SMTP debe coincidir con la cuenta autenticada (smtpUser) para evitar bloqueos anti-spam,
+      // mientras que replyTo siempre apunta al correo oficial de Hotmail del administrador (yourself_music@hotmail.com).
+      const senderAddress = smtpUser || 'yourself_music@hotmail.com';
+      const replyToAddress = ENV.SMTP.REPLY_TO || 'yourself_music@hotmail.com';
+
       const info = await transporter.sendMail({
-        from: ENV.SMTP.FROM || '"YourSelf Music" <yourself@gmail.com>',
+        from: `"YourSelf Music" <${senderAddress}>`,
+        replyTo: `"YourSelf Music" <${replyToAddress}>`,
         to: dto.email,
         subject: `Recibo de Pago #${dto.folio} - YourSelf Music (${dto.nombre_sala})`,
         html: htmlRecibo,

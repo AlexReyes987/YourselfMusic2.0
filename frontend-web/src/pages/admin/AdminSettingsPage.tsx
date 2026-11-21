@@ -28,7 +28,7 @@ export const AdminSettingsPage: React.FC = () => {
             <span>Reglas de Solapamiento y Cancelación</span>
           </div>
           <p className="text-xs text-zinc-400">
-            Bloques por hora cerrada (12:00 a 23:00 hrs). Cero reservaciones coincidentes en la misma sala física. Cancelaciones realizadas el mismo día del ensayo o 1 día antes generan una multa fija de $105.00 MXN por toda la banda; cancelaciones con 2 o más días de anticipación están libres de multa ($0.00 MXN).
+            Bloques por hora cerrada (12:00 a 23:00 hrs). Cero reservaciones coincidentes en la misma sala física. Cancelaciones realizadas dentro de las 24 horas previas al ensayo generan una multa fija de $105.00 MXN por toda la banda; cancelaciones con más de 24 horas de anticipación están libres de multa ($0.00 MXN).
           </p>
         </div>
 

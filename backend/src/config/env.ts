@@ -73,11 +73,12 @@ export const ENV = {
     WEBHOOK_SECRET: process.env.MERCADOPAGO_WEBHOOK_SECRET || '',
   },
   SMTP: {
-    HOST: process.env.SMTP_HOST || 'smtp.gmail.com',
+    HOST: process.env.SMTP_HOST || 'smtp-mail.outlook.com',
     PORT: process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587,
-    USER: process.env.SMTP_USER || '',
+    USER: process.env.SMTP_USER || 'yourself_music@hotmail.com',
     PASS: process.env.SMTP_PASS || '',
-    FROM: process.env.SMTP_FROM || 'YourSelf Music <yourself@gmail.com>',
+    FROM: process.env.SMTP_FROM || 'YourSelf Music <yourself_music@hotmail.com>',
+    REPLY_TO: process.env.SMTP_REPLY_TO || 'yourself_music@hotmail.com',
   },
   JWT: {
     SECRET: process.env.JWT_SECRET || 'super_secret_jwt_key_yourself_music_2026',
